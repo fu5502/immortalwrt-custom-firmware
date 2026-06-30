@@ -6,7 +6,7 @@
 
 - 固件版本默认跟随 ImmortalWrt `25.12.0`
 - 目标平台固定为 `x86/64 generic`
-- 默认生成 `ext4 combined` 镜像
+- 默认生成 PVE 最常用的 `ext4-combined.img.gz` 镜像
 - 根分区默认 `4096 MB`，避免每次升级后再手动扩容
 - 内置常用 LuCI 插件、代理组件、存储工具和维护工具
 - 自动嵌入 `fu5502/luci-app-homepage-api` 的 LuCI 文件

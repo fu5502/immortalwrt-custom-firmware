@@ -58,6 +58,14 @@ echo "Packages: ${packages}"
 make -C "${workdir}" image \
   PROFILE="${PROFILE}" \
   FILESYSTEMS="ext4" \
+  CONFIG_TARGET_IMAGES_GZIP="y" \
+  CONFIG_GRUB_IMAGES="y" \
+  CONFIG_GRUB_EFI_IMAGES="" \
+  CONFIG_ISO_IMAGES="" \
+  CONFIG_QCOW2_IMAGES="" \
+  CONFIG_VDI_IMAGES="" \
+  CONFIG_VMDK_IMAGES="" \
+  CONFIG_VHDX_IMAGES="" \
   ROOTFS_PARTSIZE="${ROOTFS_PARTSIZE}" \
   PACKAGES="${packages}" \
   FILES="${custom_files}" \
