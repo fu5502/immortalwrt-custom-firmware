@@ -28,6 +28,43 @@ tar --zstd -xf "${workdir}/imagebuilder.tar.zst" -C "${workdir}" --strip-compone
 custom_files="${workdir}/custom-files"
 mkdir -p "${custom_files}"
 
+set_config() {
+  local key="$1"
+  local value="$2"
+
+  if grep -q "^${key}=" "${workdir}/.config"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "${workdir}/.config"
+  elif grep -q "^# ${key} is not set" "${workdir}/.config"; then
+    sed -i "s|^# ${key} is not set|${key}=${value}|" "${workdir}/.config"
+  else
+    echo "${key}=${value}" >> "${workdir}/.config"
+  fi
+}
+
+unset_config() {
+  local key="$1"
+
+  if grep -q "^${key}=" "${workdir}/.config"; then
+    sed -i "s|^${key}=.*|# ${key} is not set|" "${workdir}/.config"
+  elif ! grep -q "^# ${key} is not set" "${workdir}/.config"; then
+    echo "# ${key} is not set" >> "${workdir}/.config"
+  fi
+}
+
+echo "Restricting ImageBuilder output to one PVE-friendly image"
+unset_config CONFIG_TARGET_ROOTFS_TARGZ
+unset_config CONFIG_TARGET_ROOTFS_SQUASHFS
+set_config CONFIG_TARGET_ROOTFS_EXT4FS y
+set_config CONFIG_TARGET_IMAGES_GZIP y
+set_config CONFIG_GRUB_IMAGES y
+unset_config CONFIG_GRUB_EFI_IMAGES
+unset_config CONFIG_ISO_IMAGES
+unset_config CONFIG_QCOW2_IMAGES
+unset_config CONFIG_VDI_IMAGES
+unset_config CONFIG_VMDK_IMAGES
+unset_config CONFIG_VHDX_IMAGES
+set_config CONFIG_TARGET_ROOTFS_PARTSIZE "${ROOTFS_PARTSIZE}"
+
 if [ -d "${workspace}/files" ]; then
   rsync -a "${workspace}/files/" "${custom_files}/"
 fi
@@ -57,29 +94,25 @@ echo "Packages: ${packages}"
 
 make -C "${workdir}" image \
   PROFILE="${PROFILE}" \
-  FILESYSTEMS="ext4" \
-  CONFIG_TARGET_IMAGES_GZIP="y" \
-  CONFIG_GRUB_IMAGES="y" \
-  CONFIG_GRUB_EFI_IMAGES="" \
-  CONFIG_ISO_IMAGES="" \
-  CONFIG_QCOW2_IMAGES="" \
-  CONFIG_VDI_IMAGES="" \
-  CONFIG_VMDK_IMAGES="" \
-  CONFIG_VHDX_IMAGES="" \
   ROOTFS_PARTSIZE="${ROOTFS_PARTSIZE}" \
   PACKAGES="${packages}" \
   FILES="${custom_files}" \
   V=s
 
-find "${workdir}/bin/targets" -type f \
-  \( -name '*ext4-combined*.img.gz' \
-     -o -name '*ext4-combined*.qcow2' \
-     -o -name '*ext4-combined*.vmdk' \
-     -o -name '*profiles.json' \
-     -o -name '*sha256sums' \) \
-  -print -exec cp -v {} "${artifacts}/" \;
+mapfile -t firmware_images < <(
+  find "${workdir}/bin/targets" -type f \
+    -name '*ext4-combined.img.gz' \
+    ! -name '*efi*' \
+    | sort
+)
 
-test "$(find "${artifacts}" -type f | wc -l)" -gt 0
+if [ "${#firmware_images[@]}" -ne 1 ]; then
+  printf 'Expected exactly one ext4-combined.img.gz image, found %s:\n' "${#firmware_images[@]}" >&2
+  printf '%s\n' "${firmware_images[@]}" >&2
+  exit 1
+fi
+
+cp -v "${firmware_images[0]}" "${artifacts}/"
 (
   cd "${artifacts}"
   sha256sum * > SHA256SUMS.txt
