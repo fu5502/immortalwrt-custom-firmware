@@ -1,0 +1,6 @@
+#!/bin/sh
+
+uci -q set system.@system[0].hostname='ImmortalWrt'
+uci -q commit system
+
+exit 0

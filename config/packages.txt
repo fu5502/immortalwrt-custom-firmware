@@ -1,0 +1,86 @@
+# Packages intentionally added on top of the ImmortalWrt x86/64 generic profile.
+# Keep this list focused on user-facing apps and drivers; ImageBuilder already
+# brings the base system and profile defaults.
+
+# LuCI and UI
+luci
+luci-light
+luci-theme-argon
+luci-theme-bootstrap
+luci-app-argon-config
+luci-i18n-argon-config-zh-cn
+luci-app-package-manager
+luci-i18n-package-manager-zh-cn
+luci-app-filemanager
+luci-i18n-filemanager-zh-cn
+luci-app-ttyd
+luci-i18n-ttyd-zh-cn
+luci-app-firewall
+luci-i18n-firewall-zh-cn
+luci-i18n-base-zh-cn
+
+# DDNS and dashboard helpers
+ddns-go
+ddns-scripts
+ddns-scripts-services
+luci-app-ddns
+luci-i18n-ddns-zh-cn
+luci-app-ddns-go
+luci-i18n-ddns-go-zh-cn
+luci-app-wol
+luci-i18n-wol-zh-cn
+
+# Proxy and network tools currently used on the router
+luci-app-openclash
+luci-app-passwall
+luci-i18n-passwall-zh-cn
+chinadns-ng
+dns2socks
+haproxy
+ipt2socks
+microsocks
+shadowsocks-rust-sslocal
+shadowsocks-rust-ssserver
+simple-obfs-client
+sing-box
+tcping
+v2ray-plugin
+xray-core
+
+# Storage, shell, diagnostics, and maintenance
+automount
+block-mount
+bash
+coreutils
+coreutils-base64
+coreutils-nohup
+curl
+e2fsprogs
+fdisk
+partx-utils
+resize2fs
+tune2fs
+etherwake
+ethtool
+lm-sensors
+ntfs3-mount
+shellsync
+ttyd
+unzip
+
+# Filesystems and common virtual/physical NIC support
+kmod-fs-exfat
+kmod-fs-ext4
+kmod-fs-f2fs
+kmod-fs-ntfs3
+kmod-fs-vfat
+kmod-e1000
+kmod-e1000e
+kmod-igb
+kmod-igc
+kmod-r8125
+kmod-r8168
+kmod-vmxnet3
+kmod-tun
+kmod-usb-storage
+kmod-usb-storage-uas
