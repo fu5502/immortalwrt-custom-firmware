@@ -57,6 +57,7 @@ echo "Packages: ${packages}"
 
 make -C "${workdir}" image \
   PROFILE="${PROFILE}" \
+  FILESYSTEMS="ext4" \
   ROOTFS_PARTSIZE="${ROOTFS_PARTSIZE}" \
   PACKAGES="${packages}" \
   FILES="${custom_files}" \
