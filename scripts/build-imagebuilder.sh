@@ -8,9 +8,10 @@ ROOTFS_PARTSIZE="${ROOTFS_PARTSIZE:-4096}"
 IMAGEBUILDER_URL="${IMAGEBUILDER_URL:-}"
 HOMEPAGE_API_REPO="${HOMEPAGE_API_REPO:-fu5502/luci-app-homepage-api}"
 DOWNLOAD_BASE="${DOWNLOAD_BASE:-https://downloads.immortalwrt.org/releases}"
-OPENCLASH_REPO="${OPENCLASH_REPO:-vernesong/OpenClash}"
-PASSWALL_FEED_REPO="${PASSWALL_FEED_REPO:-Openwrt-Passwall/openwrt-passwall}"
-BUILD_UPSTREAM_PROXY_PACKAGES="${BUILD_UPSTREAM_PROXY_PACKAGES:-1}"
+BUILD_UPSTREAM_PACKAGES="${BUILD_UPSTREAM_PACKAGES:-${BUILD_UPSTREAM_PROXY_PACKAGES:-1}}"
+UPSTREAM_APK_REPOSITORIES_FILE="${UPSTREAM_APK_REPOSITORIES_FILE:-config/upstream-apk-repositories.txt}"
+UPSTREAM_RELEASE_APKS_FILE="${UPSTREAM_RELEASE_APKS_FILE:-config/upstream-release-apks.txt}"
+UPSTREAM_SDK_PACKAGES_FILE="${UPSTREAM_SDK_PACKAGES_FILE:-config/upstream-sdk-packages.txt}"
 
 workspace="${GITHUB_WORKSPACE:-$(pwd)}"
 run_root="${RUNNER_TEMP:-/tmp}/immortalwrt-custom-firmware"
@@ -19,9 +20,33 @@ sdkdir="${run_root}/sdk"
 artifacts="${workspace}/artifacts"
 target_dash="${TARGET_PATH//\//-}"
 requested_release="${RELEASE}"
-openclash_version="release-feed"
-openclash_asset="release-feed"
-passwall_commit="release-feed"
+upstream_summary="${run_root}/UPSTREAM-PACKAGES.txt"
+upstream_extra_packages=""
+
+resolve_python() {
+  local candidate
+
+  if [ -n "${PYTHON:-}" ]; then
+    if "${PYTHON}" -c 'import json' >/dev/null 2>&1; then
+      printf '%s\n' "${PYTHON}"
+      return
+    fi
+    echo "Configured PYTHON is not usable: ${PYTHON}" >&2
+    exit 1
+  fi
+
+  for candidate in python3 python; do
+    if command -v "${candidate}" >/dev/null 2>&1 && "${candidate}" -c 'import json' >/dev/null 2>&1; then
+      printf '%s\n' "${candidate}"
+      return
+    fi
+  done
+
+  echo "Could not find a usable Python interpreter" >&2
+  exit 1
+}
+
+PYTHON_BIN="$(resolve_python)"
 
 resolve_latest_release() {
   local release_index latest_release
@@ -84,6 +109,8 @@ fi
 
 rm -rf "${run_root}" "${artifacts}"
 mkdir -p "${workdir}" "${artifacts}"
+mkdir -p "$(dirname "${upstream_summary}")"
+: > "${upstream_summary}"
 
 echo "Downloading ImageBuilder:"
 echo "${IMAGEBUILDER_URL}"
@@ -95,33 +122,133 @@ mkdir -p "${custom_files}"
 upstream_package_dir="${workdir}/packages"
 mkdir -p "${upstream_package_dir}"
 
-download_latest_openclash_apk() {
-  local api_url release_json asset_url asset_name
+trim() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "${value}"
+}
 
-  api_url="https://api.github.com/repos/${OPENCLASH_REPO}/releases/latest"
-  release_json="$(curl -fsSL --retry 3 "${api_url}")"
-  openclash_version="$(
-    printf '%s\n' "${release_json}" |
-      python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name", "unknown"))'
-  )"
-  asset_url="$(
-    printf '%s\n' "${release_json}" |
-      python3 -c 'import json,sys; data=json.load(sys.stdin); assets=data.get("assets", []); matches=[a for a in assets if a.get("name","").endswith(".apk") and a.get("name","").startswith("luci-app-openclash-")]; print(matches[0]["browser_download_url"] if matches else "")'
-  )"
+add_unique_word() {
+  local word="$1"
+  local current="$2"
 
-  if [ -z "${asset_url}" ]; then
-    echo "Could not find latest OpenClash .apk asset in ${OPENCLASH_REPO}" >&2
+  case " ${current} " in
+    *" ${word} "*) printf '%s' "${current}" ;;
+    *) printf '%s' "$(trim "${current} ${word}")" ;;
+  esac
+}
+
+configure_upstream_apk_repositories() {
+  local config_file="${workspace}/${UPSTREAM_APK_REPOSITORIES_FILE}"
+  local repositories_file="${workdir}/repositories"
+  local line name key_url repository_urls package_names repository_url key_path
+
+  if [ ! -s "${config_file}" ]; then
+    echo "No upstream apk repository config found at ${config_file}; skipping"
+    return
+  fi
+
+  if [ ! -f "${repositories_file}" ]; then
+    echo "ImageBuilder apk repositories file not found: ${repositories_file}" >&2
     exit 1
   fi
 
-  asset_name="$(basename "${asset_url}")"
-  openclash_asset="${asset_name}"
-  echo "Downloading latest OpenClash package: ${asset_name}"
-  curl -fL --retry 3 -o "${upstream_package_dir}/${asset_name}" "${asset_url}"
+  mkdir -p "${workdir}/keys"
+
+  while IFS= read -r line || [ -n "${line}" ]; do
+    line="${line%%#*}"
+    line="$(trim "${line}")"
+    [ -z "${line}" ] && continue
+
+    IFS='|' read -r name key_url repository_urls package_names _ <<< "${line}"
+    name="$(trim "${name}")"
+    key_url="$(trim "${key_url}")"
+    repository_urls="$(trim "${repository_urls}")"
+    package_names="$(trim "${package_names}")"
+
+    if [ -z "${name}" ] || [ -z "${key_url}" ] || [ -z "${repository_urls}" ] || [ -z "${package_names}" ]; then
+      echo "Invalid upstream apk repository entry: ${line}" >&2
+      exit 1
+    fi
+
+    echo "Adding upstream apk repository group: ${name}"
+    key_path="${workdir}/keys/${name}.pem"
+    curl -fL --retry 3 -o "${key_path}" "${key_url}"
+
+    for repository_url in ${repository_urls}; do
+      if ! grep -qxF "${repository_url}" "${repositories_file}"; then
+        echo "${repository_url}" >> "${repositories_file}"
+      fi
+    done
+
+    for package_name in ${package_names}; do
+      upstream_extra_packages="$(add_unique_word "${package_name}" "${upstream_extra_packages}")"
+    done
+
+    printf 'apk-repo|%s|%s|%s|%s\n' "${name}" "${key_url}" "${repository_urls}" "${package_names}" >> "${upstream_summary}"
+  done < "${config_file}"
 }
 
-build_latest_passwall_apks() {
-  local sdk_packages_dir
+download_upstream_release_apks() {
+  local config_file="${workspace}/${UPSTREAM_RELEASE_APKS_FILE}"
+  local line name repo asset_regex api_url release_json tag asset_info asset_url asset_name
+
+  if [ ! -s "${config_file}" ]; then
+    echo "No upstream release apk config found at ${config_file}; skipping"
+    return
+  fi
+
+  while IFS= read -r line || [ -n "${line}" ]; do
+    line="${line%%#*}"
+    line="$(trim "${line}")"
+    [ -z "${line}" ] && continue
+
+    IFS='|' read -r name repo asset_regex _ <<< "${line}"
+    name="$(trim "${name}")"
+    repo="$(trim "${repo}")"
+    asset_regex="$(trim "${asset_regex}")"
+
+    if [ -z "${name}" ] || [ -z "${repo}" ] || [ -z "${asset_regex}" ]; then
+      echo "Invalid upstream release apk entry: ${line}" >&2
+      exit 1
+    fi
+
+    api_url="https://api.github.com/repos/${repo}/releases/latest"
+    release_json="$(curl -fsSL --retry 3 "${api_url}")"
+    tag="$(
+      printf '%s\n' "${release_json}" |
+        "${PYTHON_BIN}" -c 'import json,sys; print(json.load(sys.stdin).get("tag_name", "unknown"))'
+    )"
+    asset_info="$(
+      printf '%s\n' "${release_json}" |
+        "${PYTHON_BIN}" -c 'import json,re,sys; data=json.load(sys.stdin); pat=re.compile(sys.argv[1]); matches=[a for a in data.get("assets", []) if pat.search(a.get("name", ""))]; print(matches[0]["browser_download_url"] + "|" + matches[0]["name"] if matches else "")' "${asset_regex}"
+    )"
+
+    if [ -z "${asset_info}" ]; then
+      echo "Could not find latest ${name} asset matching ${asset_regex} in ${repo}" >&2
+      exit 1
+    fi
+
+    asset_url="${asset_info%%|*}"
+    asset_name="${asset_info#*|}"
+    echo "Downloading latest ${name} package: ${asset_name}"
+    curl -fL --retry 3 -o "${upstream_package_dir}/${asset_name}" "${asset_url}"
+    printf 'release-apk|%s|https://github.com/%s|%s|%s\n' "${name}" "${repo}" "${tag}" "${asset_name}" >> "${upstream_summary}"
+  done < "${config_file}"
+}
+
+build_upstream_sdk_packages() {
+  local config_file="${workspace}/${UPSTREAM_SDK_PACKAGES_FILE}"
+  local line name feed repo branch make_target artifact_globs kconfig_snippet
+  local feed_names="base packages routing luci"
+  local sdk_packages_dir built_count feed_commit artifact_glob snippet_path
+  local -a sdk_entries=()
+
+  if [ ! -s "${config_file}" ]; then
+    echo "No upstream SDK package config found at ${config_file}; skipping"
+    return
+  fi
 
   echo "Downloading ImmortalWrt SDK:"
   echo "${SDK_URL}"
@@ -129,52 +256,81 @@ build_latest_passwall_apks() {
   curl -fL --retry 3 -o "${sdkdir}/sdk.tar.zst" "${SDK_URL}"
   tar --zstd -xf "${sdkdir}/sdk.tar.zst" -C "${sdkdir}" --strip-components=1
 
-  echo "Adding upstream PassWall feeds"
-  {
-    echo "src-git passwall https://github.com/${PASSWALL_FEED_REPO}.git;main"
-  } >> "${sdkdir}/feeds.conf.default"
+  while IFS= read -r line || [ -n "${line}" ]; do
+    line="${line%%#*}"
+    line="$(trim "${line}")"
+    [ -z "${line}" ] && continue
+
+    IFS='|' read -r name feed repo branch make_target artifact_globs kconfig_snippet _ <<< "${line}"
+    name="$(trim "${name}")"
+    feed="$(trim "${feed}")"
+    repo="$(trim "${repo}")"
+    branch="$(trim "${branch}")"
+    make_target="$(trim "${make_target}")"
+    artifact_globs="$(trim "${artifact_globs}")"
+    kconfig_snippet="$(trim "${kconfig_snippet:-}")"
+
+    if [ -z "${name}" ] || [ -z "${feed}" ] || [ -z "${repo}" ] || [ -z "${branch}" ] || [ -z "${make_target}" ] || [ -z "${artifact_globs}" ]; then
+      echo "Invalid upstream SDK package entry: ${line}" >&2
+      exit 1
+    fi
+
+    echo "src-git ${feed} ${repo};${branch}" >> "${sdkdir}/feeds.conf.default"
+    feed_names="$(add_unique_word "${feed}" "${feed_names}")"
+    sdk_entries+=("${name}|${feed}|${repo}|${branch}|${make_target}|${artifact_globs}|${kconfig_snippet:-}")
+  done < "${config_file}"
 
   make -C "${sdkdir}" defconfig
-  "${sdkdir}/scripts/feeds" update base packages routing luci passwall
-  passwall_commit="$(git -C "${sdkdir}/feeds/passwall" rev-parse HEAD)"
-  "${sdkdir}/scripts/feeds" install -p base -a
-  "${sdkdir}/scripts/feeds" install -p packages -a
-  "${sdkdir}/scripts/feeds" install -p routing -a
-  "${sdkdir}/scripts/feeds" install -p luci -a
-  "${sdkdir}/scripts/feeds" install -p passwall -a
+  "${sdkdir}/scripts/feeds" update ${feed_names}
 
-  cat >> "${sdkdir}/.config" <<'EOF'
-CONFIG_PACKAGE_luci-app-passwall=m
-CONFIG_PACKAGE_luci-app-passwall_Nftables_Transparent_Proxy=y
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Geoview=n
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Haproxy=n
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust_Client=n
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust_Server=n
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ShadowsocksR_Libev_Client=n
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ShadowsocksR_Libev_Server=n
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Simple_Obfs=n
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SingBox=n
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_V2ray_Plugin=n
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray=n
-EOF
+  for feed in ${feed_names}; do
+    "${sdkdir}/scripts/feeds" install -p "${feed}" -a
+  done
+
+  for line in "${sdk_entries[@]}"; do
+    IFS='|' read -r name feed repo branch make_target artifact_globs kconfig_snippet <<< "${line}"
+    if [ -n "${kconfig_snippet}" ] && [ "${kconfig_snippet}" != "-" ]; then
+      snippet_path="${workspace}/${kconfig_snippet}"
+      if [ ! -f "${snippet_path}" ]; then
+        echo "Kconfig snippet for ${name} not found: ${snippet_path}" >&2
+        exit 1
+      fi
+      cat "${snippet_path}" >> "${sdkdir}/.config"
+    fi
+  done
 
   make -C "${sdkdir}" defconfig
-  make -C "${sdkdir}" package/luci-app-passwall/compile -j"$(nproc)" V=s
-
   sdk_packages_dir="${sdkdir}/bin/packages"
-  find "${sdk_packages_dir}" -type f \
-    \( -name 'luci-app-passwall-*.apk' -o -name 'luci-i18n-passwall-zh-cn-*.apk' \) \
-    -exec cp -v {} "${upstream_package_dir}/" \;
 
-  if ! compgen -G "${upstream_package_dir}/luci-app-passwall-*.apk" >/dev/null; then
-    echo "PassWall build finished but luci-app-passwall apk was not found" >&2
-    exit 1
-  fi
+  for line in "${sdk_entries[@]}"; do
+    IFS='|' read -r name feed repo branch make_target artifact_globs kconfig_snippet <<< "${line}"
+    echo "Building latest ${name} from ${repo};${branch}"
+    make -C "${sdkdir}" "${make_target}" -j"$(nproc)" V=s
+
+    feed_commit="$(git -C "${sdkdir}/feeds/${feed}" rev-parse HEAD)"
+    built_count=0
+    for artifact_glob in ${artifact_globs}; do
+      while IFS= read -r artifact; do
+        cp -v "${artifact}" "${upstream_package_dir}/"
+        built_count=$((built_count + 1))
+      done < <(find "${sdk_packages_dir}" -type f -name "${artifact_glob}" | sort)
+    done
+
+    if [ "${built_count}" -eq 0 ]; then
+      echo "${name} build finished but no artifact matched: ${artifact_globs}" >&2
+      exit 1
+    fi
+
+    printf 'sdk-feed|%s|%s|%s|%s|%s artifacts\n' "${name}" "${repo}" "${branch}" "${feed_commit}" "${built_count}" >> "${upstream_summary}"
+  done
 }
 
-if [ "${BUILD_UPSTREAM_PROXY_PACKAGES}" = "1" ]; then
-  download_latest_openclash_apk
-  build_latest_passwall_apks
+if [ "${BUILD_UPSTREAM_PACKAGES}" = "1" ]; then
+  configure_upstream_apk_repositories
+  download_upstream_release_apks
+  build_upstream_sdk_packages
+else
+  echo "Upstream package refresh disabled; using ImmortalWrt release feeds only" | tee -a "${upstream_summary}"
 fi
 
 set_config() {
@@ -235,6 +391,7 @@ packages="$(
     tr '\n' ' ' |
     sed -e 's/[[:space:]]\+/ /g' -e 's/^ //' -e 's/ $//'
 )"
+packages="$(trim "${packages} ${upstream_extra_packages}")"
 
 echo "Release: ${RELEASE}"
 echo "Requested release: ${requested_release}"
@@ -242,8 +399,9 @@ echo "Target: ${TARGET_PATH}"
 echo "Profile: ${PROFILE}"
 echo "Rootfs partsize: ${ROOTFS_PARTSIZE} MB"
 echo "Homepage API commit: ${homepage_api_commit}"
-echo "OpenClash source: ${OPENCLASH_REPO} ${openclash_version} ${openclash_asset}"
-echo "PassWall source: ${PASSWALL_FEED_REPO} ${passwall_commit}"
+echo "Upstream package refresh: ${BUILD_UPSTREAM_PACKAGES}"
+echo "Upstream package sources:"
+sed 's/^/  /' "${upstream_summary}"
 echo "Packages: ${packages}"
 
 make -C "${workdir}" image \
@@ -267,6 +425,7 @@ if [ "${#firmware_images[@]}" -ne 1 ]; then
 fi
 
 cp -v "${firmware_images[0]}" "${artifacts}/"
+cp -v "${upstream_summary}" "${artifacts}/UPSTREAM-PACKAGES.txt"
 (
   cd "${artifacts}"
   sha256sum * > SHA256SUMS.txt
@@ -283,8 +442,15 @@ ImageBuilder: ${IMAGEBUILDER_URL}
 SDK: ${SDK_URL}
 Homepage API source: https://github.com/${HOMEPAGE_API_REPO}
 Homepage API commit: ${homepage_api_commit}
-OpenClash source: https://github.com/${OPENCLASH_REPO} ${openclash_version}
-OpenClash asset: ${openclash_asset}
-PassWall source: https://github.com/${PASSWALL_FEED_REPO} ${passwall_commit}
+Upstream package refresh: ${BUILD_UPSTREAM_PACKAGES}
+Upstream apk repository config: ${UPSTREAM_APK_REPOSITORIES_FILE}
+Upstream release apk config: ${UPSTREAM_RELEASE_APKS_FILE}
+Upstream SDK package config: ${UPSTREAM_SDK_PACKAGES_FILE}
 Commit: ${GITHUB_SHA:-local}
 EOF
+
+{
+  echo
+  echo "Upstream package sources:"
+  cat "${upstream_summary}"
+} >> "${artifacts}/BUILD-INFO.txt"

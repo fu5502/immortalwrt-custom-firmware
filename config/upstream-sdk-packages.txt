@@ -1,0 +1,9 @@
+# Packages built from the latest source feed with the matching ImmortalWrt SDK.
+#
+# Format:
+# name|feed_name|feed_git_url|branch|make_target|artifact_globs|kconfig_snippet
+#
+# - artifact_globs is a space-separated list matched under SDK bin/packages.
+# - kconfig_snippet is optional; use - when no extra config is needed.
+
+passwall|passwall|https://github.com/Openwrt-Passwall/openwrt-passwall.git|main|package/luci-app-passwall/compile|luci-app-passwall-*.apk luci-i18n-passwall-zh-cn-*.apk|config/sdk/passwall.config

@@ -15,11 +15,15 @@ on:
         description: Optional custom ImageBuilder URL
         required: false
         default: ""
+      upstream_packages:
+        description: Refresh upstream plugin packages from configured release assets and SDK feeds
+        required: true
+        default: "1"
   push:
     branches:
       - main
   schedule:
-    - cron: "0 20 * * 5"
+    - cron: "0 20 * * *"
 
 permissions:
   contents: write
@@ -35,6 +39,7 @@ jobs:
       RELEASE: ${{ github.event.inputs.release || 'latest' }}
       ROOTFS_PARTSIZE: ${{ github.event.inputs.rootfs_partsize || '4096' }}
       IMAGEBUILDER_URL: ${{ github.event.inputs.imagebuilder_url || '' }}
+      BUILD_UPSTREAM_PACKAGES: ${{ github.event.inputs.upstream_packages || '1' }}
       TARGET_PATH: x86/64
       PROFILE: generic
 
@@ -76,8 +81,17 @@ jobs:
             echo "- Rootfs partsize: ${ROOTFS_PARTSIZE} MB"
             echo "- Homepage API plugin is embedded from the latest fu5502/luci-app-homepage-api default branch"
             echo "- ImageBuilder: ${IMAGEBUILDER_URL}"
-            echo "- OpenClash is downloaded from the latest vernesong/OpenClash release when upstream proxy builds are enabled"
-            echo "- PassWall LuCI is built from the latest Openwrt-Passwall feed when upstream proxy builds are enabled"
+            echo "- Upstream plugin refresh: ${BUILD_UPSTREAM_PACKAGES}"
+            echo "- Upstream apk repositories are configured in config/upstream-apk-repositories.txt"
+            echo "- Upstream release APKs are configured in config/upstream-release-apks.txt"
+            echo "- Upstream SDK-built packages are configured in config/upstream-sdk-packages.txt"
+            echo
+            echo "Upstream packages:"
+            if [ -f artifacts/UPSTREAM-PACKAGES.txt ]; then
+              sed 's/^/- /' artifacts/UPSTREAM-PACKAGES.txt
+            else
+              echo "- No upstream package manifest was produced"
+            fi
             echo
             echo "Files:"
             for file in artifacts/*; do

@@ -1,0 +1,9 @@
+# Packages downloaded directly from the latest GitHub release.
+#
+# Format:
+# name|github_repo|asset_name_regex
+#
+# The downloaded apk is copied into ImageBuilder's local packages directory, so
+# it wins over the same package name from the ImmortalWrt release feed.
+
+openclash|vernesong/OpenClash|^luci-app-openclash-.*\.apk$
