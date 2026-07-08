@@ -76,6 +76,8 @@ jobs:
             echo "- Rootfs partsize: ${ROOTFS_PARTSIZE} MB"
             echo "- Homepage API plugin is embedded from the latest fu5502/luci-app-homepage-api default branch"
             echo "- ImageBuilder: ${IMAGEBUILDER_URL}"
+            echo "- OpenClash is downloaded from the latest vernesong/OpenClash release when upstream proxy builds are enabled"
+            echo "- PassWall is built from the latest Openwrt-Passwall feeds when upstream proxy builds are enabled"
             echo
             echo "Files:"
             for file in artifacts/*; do

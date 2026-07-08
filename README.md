@@ -9,6 +9,8 @@
 - 默认生成 PVE 最常用的 `ext4-combined.img.gz` 镜像
 - 根分区默认 `4096 MB`，避免每次升级后再手动扩容
 - 内置常用 LuCI 插件、代理组件、存储工具和维护工具
+- OpenClash 默认下载 `vernesong/OpenClash` 最新 Release 的 `.apk`
+- PassWall 默认用 ImmortalWrt SDK 从 `Openwrt-Passwall` 最新 feed 编译
 - 自动嵌入 `fu5502/luci-app-homepage-api` 的 LuCI 文件
 - GitHub Actions 构建成功后自动发布到 Releases
 
@@ -45,7 +47,18 @@ config/router-installed-packages-2026-06-30.txt
 
 快照只做参考，不直接用于构建，避免把底层系统包、内核包和版本绑定包全部硬塞进固件。
 
-每次构建时，`config/packages.txt` 里的包都会由当前 ImmortalWrt 版本对应的软件源解析并安装最新可用版本。OpenClash、PassWall、DNS 和透明代理相关依赖已经写进清单，避免普通官方 sysupgrade 后后装包丢失。
+每次构建时，`config/packages.txt` 里的普通包会由当前 ImmortalWrt 版本对应的软件源解析并安装最新可用版本。
+
+OpenClash 和 PassWall 单独处理，避免被 ImmortalWrt release 源里的旧版本锁住：
+
+- OpenClash：下载 `vernesong/OpenClash` 最新 GitHub Release 里的 `.apk`
+- PassWall：下载 ImmortalWrt SDK，并从 `Openwrt-Passwall/openwrt-passwall` 与 `Openwrt-Passwall/openwrt-passwall-packages` 最新 main feed 编译 `.apk`
+
+如果需要临时回到纯 ImmortalWrt release 源版本，可以在 workflow 环境变量里设置：
+
+```text
+BUILD_UPSTREAM_PROXY_PACKAGES=0
+```
 
 ## PVE 使用建议
 

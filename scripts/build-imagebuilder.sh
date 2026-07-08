@@ -8,12 +8,22 @@ ROOTFS_PARTSIZE="${ROOTFS_PARTSIZE:-4096}"
 IMAGEBUILDER_URL="${IMAGEBUILDER_URL:-}"
 HOMEPAGE_API_REPO="${HOMEPAGE_API_REPO:-fu5502/luci-app-homepage-api}"
 DOWNLOAD_BASE="${DOWNLOAD_BASE:-https://downloads.immortalwrt.org/releases}"
+OPENCLASH_REPO="${OPENCLASH_REPO:-vernesong/OpenClash}"
+PASSWALL_FEED_REPO="${PASSWALL_FEED_REPO:-Openwrt-Passwall/openwrt-passwall}"
+PASSWALL_PACKAGES_FEED_REPO="${PASSWALL_PACKAGES_FEED_REPO:-Openwrt-Passwall/openwrt-passwall-packages}"
+BUILD_UPSTREAM_PROXY_PACKAGES="${BUILD_UPSTREAM_PROXY_PACKAGES:-1}"
 
 workspace="${GITHUB_WORKSPACE:-$(pwd)}"
-workdir="${RUNNER_TEMP:-/tmp}/immortalwrt-imagebuilder"
+run_root="${RUNNER_TEMP:-/tmp}/immortalwrt-custom-firmware"
+workdir="${run_root}/imagebuilder"
+sdkdir="${run_root}/sdk"
 artifacts="${workspace}/artifacts"
 target_dash="${TARGET_PATH//\//-}"
 requested_release="${RELEASE}"
+openclash_version="release-feed"
+openclash_asset="release-feed"
+passwall_commit="release-feed"
+passwall_packages_commit="release-feed"
 
 resolve_latest_release() {
   local release_index latest_release
@@ -35,6 +45,25 @@ resolve_latest_release() {
   printf '%s\n' "${latest_release}"
 }
 
+resolve_sdk_url() {
+  local target_index sdk_name
+
+  target_index="$(curl -fsSL --retry 3 "${DOWNLOAD_BASE}/${RELEASE}/targets/${TARGET_PATH}/")"
+  sdk_name="$(
+    printf '%s\n' "${target_index}" |
+      grep -Eo "immortalwrt-sdk-${RELEASE}-${target_dash}[^\"<]*\\.tar\\.zst" |
+      sort -V |
+      tail -n 1
+  )"
+
+  if [ -z "${sdk_name}" ]; then
+    echo "Could not resolve ImmortalWrt SDK for ${RELEASE} ${TARGET_PATH}" >&2
+    exit 1
+  fi
+
+  printf '%s/%s/targets/%s/%s\n' "${DOWNLOAD_BASE}" "${RELEASE}" "${TARGET_PATH}" "${sdk_name}"
+}
+
 if [ "${RELEASE}" = "latest" ]; then
   RELEASE="$(resolve_latest_release)"
   echo "Resolved latest ImmortalWrt release: ${RELEASE}"
@@ -44,15 +73,18 @@ if [ -z "${IMAGEBUILDER_URL}" ]; then
   IMAGEBUILDER_URL="${DOWNLOAD_BASE}/${RELEASE}/targets/${TARGET_PATH}/immortalwrt-imagebuilder-${RELEASE}-${target_dash}.Linux-x86_64.tar.zst"
 fi
 
+SDK_URL="${SDK_URL:-$(resolve_sdk_url)}"
+
 if [ -n "${GITHUB_ENV:-}" ]; then
   {
     echo "REQUESTED_RELEASE=${requested_release}"
     echo "RESOLVED_RELEASE=${RELEASE}"
     echo "IMAGEBUILDER_URL=${IMAGEBUILDER_URL}"
+    echo "SDK_URL=${SDK_URL}"
   } >> "${GITHUB_ENV}"
 fi
 
-rm -rf "${workdir}" "${artifacts}"
+rm -rf "${run_root}" "${artifacts}"
 mkdir -p "${workdir}" "${artifacts}"
 
 echo "Downloading ImageBuilder:"
@@ -62,6 +94,86 @@ tar --zstd -xf "${workdir}/imagebuilder.tar.zst" -C "${workdir}" --strip-compone
 
 custom_files="${workdir}/custom-files"
 mkdir -p "${custom_files}"
+upstream_package_dir="${workdir}/packages"
+mkdir -p "${upstream_package_dir}"
+
+download_latest_openclash_apk() {
+  local api_url release_json asset_url asset_name
+
+  api_url="https://api.github.com/repos/${OPENCLASH_REPO}/releases/latest"
+  release_json="$(curl -fsSL --retry 3 "${api_url}")"
+  openclash_version="$(
+    printf '%s\n' "${release_json}" |
+      python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name", "unknown"))'
+  )"
+  asset_url="$(
+    printf '%s\n' "${release_json}" |
+      python3 -c 'import json,sys; data=json.load(sys.stdin); assets=data.get("assets", []); matches=[a for a in assets if a.get("name","").endswith(".apk") and a.get("name","").startswith("luci-app-openclash-")]; print(matches[0]["browser_download_url"] if matches else "")'
+  )"
+
+  if [ -z "${asset_url}" ]; then
+    echo "Could not find latest OpenClash .apk asset in ${OPENCLASH_REPO}" >&2
+    exit 1
+  fi
+
+  asset_name="$(basename "${asset_url}")"
+  openclash_asset="${asset_name}"
+  echo "Downloading latest OpenClash package: ${asset_name}"
+  curl -fL --retry 3 -o "${upstream_package_dir}/${asset_name}" "${asset_url}"
+}
+
+build_latest_passwall_apks() {
+  local sdk_packages_dir
+
+  echo "Downloading ImmortalWrt SDK:"
+  echo "${SDK_URL}"
+  mkdir -p "${sdkdir}"
+  curl -fL --retry 3 -o "${sdkdir}/sdk.tar.zst" "${SDK_URL}"
+  tar --zstd -xf "${sdkdir}/sdk.tar.zst" -C "${sdkdir}" --strip-components=1
+
+  echo "Adding upstream PassWall feeds"
+  {
+    echo "src-git passwall https://github.com/${PASSWALL_FEED_REPO}.git;main"
+    echo "src-git passwall_packages https://github.com/${PASSWALL_PACKAGES_FEED_REPO}.git;main"
+  } >> "${sdkdir}/feeds.conf.default"
+
+  make -C "${sdkdir}" defconfig
+  "${sdkdir}/scripts/feeds" update passwall passwall_packages
+  passwall_commit="$(git -C "${sdkdir}/feeds/passwall" rev-parse HEAD)"
+  passwall_packages_commit="$(git -C "${sdkdir}/feeds/passwall_packages" rev-parse HEAD)"
+  "${sdkdir}/scripts/feeds" install -p passwall -a
+  "${sdkdir}/scripts/feeds" install -p passwall_packages -a
+
+  cat >> "${sdkdir}/.config" <<'EOF'
+CONFIG_PACKAGE_luci-app-passwall=m
+CONFIG_PACKAGE_luci-app-passwall_Nftables_Transparent_Proxy=y
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Geoview=y
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Haproxy=y
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust_Client=y
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust_Server=y
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Simple_Obfs=y
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SingBox=y
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_V2ray_Plugin=y
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray=y
+EOF
+
+  make -C "${sdkdir}" defconfig
+  make -C "${sdkdir}" package/luci-app-passwall/compile -j"$(nproc)" V=s
+
+  sdk_packages_dir="${sdkdir}/bin/packages"
+  find "${sdk_packages_dir}" -type f -name '*.apk' \
+    -exec cp -v {} "${upstream_package_dir}/" \;
+
+  if ! compgen -G "${upstream_package_dir}/luci-app-passwall-*.apk" >/dev/null; then
+    echo "PassWall build finished but luci-app-passwall apk was not found" >&2
+    exit 1
+  fi
+}
+
+if [ "${BUILD_UPSTREAM_PROXY_PACKAGES}" = "1" ]; then
+  download_latest_openclash_apk
+  build_latest_passwall_apks
+fi
 
 set_config() {
   local key="$1"
@@ -128,6 +240,9 @@ echo "Target: ${TARGET_PATH}"
 echo "Profile: ${PROFILE}"
 echo "Rootfs partsize: ${ROOTFS_PARTSIZE} MB"
 echo "Homepage API commit: ${homepage_api_commit}"
+echo "OpenClash source: ${OPENCLASH_REPO} ${openclash_version} ${openclash_asset}"
+echo "PassWall source: ${PASSWALL_FEED_REPO} ${passwall_commit}"
+echo "PassWall packages source: ${PASSWALL_PACKAGES_FEED_REPO} ${passwall_packages_commit}"
 echo "Packages: ${packages}"
 
 make -C "${workdir}" image \
@@ -164,7 +279,12 @@ Target: ${TARGET_PATH}
 Profile: ${PROFILE}
 Rootfs partsize: ${ROOTFS_PARTSIZE} MB
 ImageBuilder: ${IMAGEBUILDER_URL}
+SDK: ${SDK_URL}
 Homepage API source: https://github.com/${HOMEPAGE_API_REPO}
 Homepage API commit: ${homepage_api_commit}
+OpenClash source: https://github.com/${OPENCLASH_REPO} ${openclash_version}
+OpenClash asset: ${openclash_asset}
+PassWall source: https://github.com/${PASSWALL_FEED_REPO} ${passwall_commit}
+PassWall packages source: https://github.com/${PASSWALL_PACKAGES_FEED_REPO} ${passwall_packages_commit}
 Commit: ${GITHUB_SHA:-local}
 EOF
