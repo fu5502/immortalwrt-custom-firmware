@@ -10,7 +10,7 @@
 - 根分区默认 `4096 MB`，避免每次升级后再手动扩容
 - 内置常用 LuCI 插件、代理组件、存储工具和维护工具
 - OpenClash 默认下载 `vernesong/OpenClash` 最新 Release 的 `.apk`
-- PassWall 默认用 ImmortalWrt SDK 从 `Openwrt-Passwall` 最新 feed 编译
+- PassWall LuCI 包默认用 ImmortalWrt SDK 从 `Openwrt-Passwall` 最新 feed 编译
 - 自动嵌入 `fu5502/luci-app-homepage-api` 的 LuCI 文件
 - GitHub Actions 构建成功后自动发布到 Releases
 
@@ -52,7 +52,9 @@ config/router-installed-packages-2026-06-30.txt
 OpenClash 和 PassWall 单独处理，避免被 ImmortalWrt release 源里的旧版本锁住：
 
 - OpenClash：下载 `vernesong/OpenClash` 最新 GitHub Release 里的 `.apk`
-- PassWall：下载 ImmortalWrt SDK，并从 `Openwrt-Passwall/openwrt-passwall` 与 `Openwrt-Passwall/openwrt-passwall-packages` 最新 main feed 编译 `.apk`
+- PassWall：下载 ImmortalWrt SDK，并从 `Openwrt-Passwall/openwrt-passwall` 最新 main feed 编译 LuCI `.apk`
+
+PassWall 的核心依赖包，比如 `sing-box`、`xray-core`、`chinadns-ng` 等，仍由当前 ImmortalWrt release 软件源解析。这样可以避免把 Go/Rust 运行核心全部源码编译进 Actions，构建更稳定。
 
 如果需要临时回到纯 ImmortalWrt release 源版本，可以在 workflow 环境变量里设置：
 

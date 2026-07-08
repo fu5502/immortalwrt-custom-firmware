@@ -10,7 +10,6 @@ HOMEPAGE_API_REPO="${HOMEPAGE_API_REPO:-fu5502/luci-app-homepage-api}"
 DOWNLOAD_BASE="${DOWNLOAD_BASE:-https://downloads.immortalwrt.org/releases}"
 OPENCLASH_REPO="${OPENCLASH_REPO:-vernesong/OpenClash}"
 PASSWALL_FEED_REPO="${PASSWALL_FEED_REPO:-Openwrt-Passwall/openwrt-passwall}"
-PASSWALL_PACKAGES_FEED_REPO="${PASSWALL_PACKAGES_FEED_REPO:-Openwrt-Passwall/openwrt-passwall-packages}"
 BUILD_UPSTREAM_PROXY_PACKAGES="${BUILD_UPSTREAM_PROXY_PACKAGES:-1}"
 
 workspace="${GITHUB_WORKSPACE:-$(pwd)}"
@@ -23,7 +22,6 @@ requested_release="${RELEASE}"
 openclash_version="release-feed"
 openclash_asset="release-feed"
 passwall_commit="release-feed"
-passwall_packages_commit="release-feed"
 
 resolve_latest_release() {
   local release_index latest_release
@@ -134,34 +132,38 @@ build_latest_passwall_apks() {
   echo "Adding upstream PassWall feeds"
   {
     echo "src-git passwall https://github.com/${PASSWALL_FEED_REPO}.git;main"
-    echo "src-git passwall_packages https://github.com/${PASSWALL_PACKAGES_FEED_REPO}.git;main"
   } >> "${sdkdir}/feeds.conf.default"
 
   make -C "${sdkdir}" defconfig
-  "${sdkdir}/scripts/feeds" update passwall passwall_packages
+  "${sdkdir}/scripts/feeds" update base packages routing luci passwall
   passwall_commit="$(git -C "${sdkdir}/feeds/passwall" rev-parse HEAD)"
-  passwall_packages_commit="$(git -C "${sdkdir}/feeds/passwall_packages" rev-parse HEAD)"
+  "${sdkdir}/scripts/feeds" install -p base -a
+  "${sdkdir}/scripts/feeds" install -p packages -a
+  "${sdkdir}/scripts/feeds" install -p routing -a
+  "${sdkdir}/scripts/feeds" install -p luci -a
   "${sdkdir}/scripts/feeds" install -p passwall -a
-  "${sdkdir}/scripts/feeds" install -p passwall_packages -a
 
   cat >> "${sdkdir}/.config" <<'EOF'
 CONFIG_PACKAGE_luci-app-passwall=m
 CONFIG_PACKAGE_luci-app-passwall_Nftables_Transparent_Proxy=y
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Geoview=y
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Haproxy=y
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust_Client=y
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust_Server=y
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Simple_Obfs=y
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SingBox=y
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_V2ray_Plugin=y
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray=y
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Geoview=n
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Haproxy=n
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust_Client=n
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust_Server=n
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ShadowsocksR_Libev_Client=n
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ShadowsocksR_Libev_Server=n
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Simple_Obfs=n
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SingBox=n
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_V2ray_Plugin=n
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray=n
 EOF
 
   make -C "${sdkdir}" defconfig
   make -C "${sdkdir}" package/luci-app-passwall/compile -j"$(nproc)" V=s
 
   sdk_packages_dir="${sdkdir}/bin/packages"
-  find "${sdk_packages_dir}" -type f -name '*.apk' \
+  find "${sdk_packages_dir}" -type f \
+    \( -name 'luci-app-passwall-*.apk' -o -name 'luci-i18n-passwall-zh-cn-*.apk' \) \
     -exec cp -v {} "${upstream_package_dir}/" \;
 
   if ! compgen -G "${upstream_package_dir}/luci-app-passwall-*.apk" >/dev/null; then
@@ -242,7 +244,6 @@ echo "Rootfs partsize: ${ROOTFS_PARTSIZE} MB"
 echo "Homepage API commit: ${homepage_api_commit}"
 echo "OpenClash source: ${OPENCLASH_REPO} ${openclash_version} ${openclash_asset}"
 echo "PassWall source: ${PASSWALL_FEED_REPO} ${passwall_commit}"
-echo "PassWall packages source: ${PASSWALL_PACKAGES_FEED_REPO} ${passwall_packages_commit}"
 echo "Packages: ${packages}"
 
 make -C "${workdir}" image \
@@ -285,6 +286,5 @@ Homepage API commit: ${homepage_api_commit}
 OpenClash source: https://github.com/${OPENCLASH_REPO} ${openclash_version}
 OpenClash asset: ${openclash_asset}
 PassWall source: https://github.com/${PASSWALL_FEED_REPO} ${passwall_commit}
-PassWall packages source: https://github.com/${PASSWALL_PACKAGES_FEED_REPO} ${passwall_packages_commit}
 Commit: ${GITHUB_SHA:-local}
 EOF
