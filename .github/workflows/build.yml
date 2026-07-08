@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release:
-        description: ImmortalWrt release version
+        description: ImmortalWrt release version, or latest
         required: true
-        default: 25.12.0
+        default: latest
       rootfs_partsize:
         description: Root filesystem partition size in MB
         required: true
@@ -32,7 +32,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     env:
-      RELEASE: ${{ github.event.inputs.release || '25.12.0' }}
+      RELEASE: ${{ github.event.inputs.release || 'latest' }}
       ROOTFS_PARTSIZE: ${{ github.event.inputs.rootfs_partsize || '4096' }}
       IMAGEBUILDER_URL: ${{ github.event.inputs.imagebuilder_url || '' }}
       TARGET_PATH: x86/64
@@ -56,8 +56,10 @@ jobs:
       - name: Prepare release metadata
         run: |
           short_sha="$(printf '%.7s' "$GITHUB_SHA")"
-          tag_name="immortalwrt-${RELEASE}-x86-64-rootfs-${ROOTFS_PARTSIZE}m-${short_sha}"
-          release_name="ImmortalWrt ${RELEASE} x86/64 custom rootfs ${ROOTFS_PARTSIZE}M (${short_sha})"
+          resolved_release="${RESOLVED_RELEASE:-$RELEASE}"
+          requested_release="${REQUESTED_RELEASE:-$RELEASE}"
+          tag_name="immortalwrt-${resolved_release}-x86-64-rootfs-${ROOTFS_PARTSIZE}m-${short_sha}"
+          release_name="ImmortalWrt ${resolved_release} x86/64 custom rootfs ${ROOTFS_PARTSIZE}M (${short_sha})"
 
           {
             echo "RELEASE_TAG=${tag_name}"
@@ -67,11 +69,13 @@ jobs:
           {
             echo "Custom ImmortalWrt firmware for fu5502."
             echo
-            echo "- Release: ${RELEASE}"
+            echo "- Requested release: ${requested_release}"
+            echo "- Resolved release: ${resolved_release}"
             echo "- Target: x86/64"
             echo "- Profile: generic"
             echo "- Rootfs partsize: ${ROOTFS_PARTSIZE} MB"
-            echo "- Homepage API plugin is embedded from fu5502/luci-app-homepage-api"
+            echo "- Homepage API plugin is embedded from the latest fu5502/luci-app-homepage-api default branch"
+            echo "- ImageBuilder: ${IMAGEBUILDER_URL}"
             echo
             echo "Files:"
             for file in artifacts/*; do

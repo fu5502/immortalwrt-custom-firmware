@@ -1,20 +1,55 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RELEASE="${RELEASE:-25.12.0}"
+RELEASE="${RELEASE:-latest}"
 TARGET_PATH="${TARGET_PATH:-x86/64}"
 PROFILE="${PROFILE:-generic}"
 ROOTFS_PARTSIZE="${ROOTFS_PARTSIZE:-4096}"
 IMAGEBUILDER_URL="${IMAGEBUILDER_URL:-}"
 HOMEPAGE_API_REPO="${HOMEPAGE_API_REPO:-fu5502/luci-app-homepage-api}"
+DOWNLOAD_BASE="${DOWNLOAD_BASE:-https://downloads.immortalwrt.org/releases}"
 
 workspace="${GITHUB_WORKSPACE:-$(pwd)}"
 workdir="${RUNNER_TEMP:-/tmp}/immortalwrt-imagebuilder"
 artifacts="${workspace}/artifacts"
 target_dash="${TARGET_PATH//\//-}"
+requested_release="${RELEASE}"
+
+resolve_latest_release() {
+  local release_index latest_release
+
+  release_index="$(curl -fsSL --retry 3 "${DOWNLOAD_BASE}/")"
+  latest_release="$(
+    printf '%s\n' "${release_index}" |
+      grep -Eo 'href="[0-9]+(\.[0-9]+){1,2}/"' |
+      sed -E 's|href="([^"]+)/"|\1|' |
+      sort -V |
+      tail -n 1
+  )"
+
+  if [ -z "${latest_release}" ]; then
+    echo "Could not resolve latest ImmortalWrt release from ${DOWNLOAD_BASE}/" >&2
+    exit 1
+  fi
+
+  printf '%s\n' "${latest_release}"
+}
+
+if [ "${RELEASE}" = "latest" ]; then
+  RELEASE="$(resolve_latest_release)"
+  echo "Resolved latest ImmortalWrt release: ${RELEASE}"
+fi
 
 if [ -z "${IMAGEBUILDER_URL}" ]; then
-  IMAGEBUILDER_URL="https://downloads.immortalwrt.org/releases/${RELEASE}/targets/${TARGET_PATH}/immortalwrt-imagebuilder-${RELEASE}-${target_dash}.Linux-x86_64.tar.zst"
+  IMAGEBUILDER_URL="${DOWNLOAD_BASE}/${RELEASE}/targets/${TARGET_PATH}/immortalwrt-imagebuilder-${RELEASE}-${target_dash}.Linux-x86_64.tar.zst"
+fi
+
+if [ -n "${GITHUB_ENV:-}" ]; then
+  {
+    echo "REQUESTED_RELEASE=${requested_release}"
+    echo "RESOLVED_RELEASE=${RELEASE}"
+    echo "IMAGEBUILDER_URL=${IMAGEBUILDER_URL}"
+  } >> "${GITHUB_ENV}"
 fi
 
 rm -rf "${workdir}" "${artifacts}"
@@ -71,6 +106,7 @@ fi
 
 echo "Embedding Homepage API plugin files from ${HOMEPAGE_API_REPO}"
 git clone --depth 1 "https://github.com/${HOMEPAGE_API_REPO}.git" "${workdir}/homepage-api"
+homepage_api_commit="$(git -C "${workdir}/homepage-api" rev-parse HEAD)"
 rsync -a "${workdir}/homepage-api/root/" "${custom_files}/"
 mkdir -p "${custom_files}/www"
 rsync -a "${workdir}/homepage-api/htdocs/" "${custom_files}/www/"
@@ -87,9 +123,11 @@ packages="$(
 )"
 
 echo "Release: ${RELEASE}"
+echo "Requested release: ${requested_release}"
 echo "Target: ${TARGET_PATH}"
 echo "Profile: ${PROFILE}"
 echo "Rootfs partsize: ${ROOTFS_PARTSIZE} MB"
+echo "Homepage API commit: ${homepage_api_commit}"
 echo "Packages: ${packages}"
 
 make -C "${workdir}" image \
@@ -120,11 +158,13 @@ cp -v "${firmware_images[0]}" "${artifacts}/"
 
 cat > "${artifacts}/BUILD-INFO.txt" <<EOF
 ImmortalWrt custom firmware
-Release: ${RELEASE}
+Requested release: ${requested_release}
+Resolved release: ${RELEASE}
 Target: ${TARGET_PATH}
 Profile: ${PROFILE}
 Rootfs partsize: ${ROOTFS_PARTSIZE} MB
 ImageBuilder: ${IMAGEBUILDER_URL}
 Homepage API source: https://github.com/${HOMEPAGE_API_REPO}
+Homepage API commit: ${homepage_api_commit}
 Commit: ${GITHUB_SHA:-local}
 EOF

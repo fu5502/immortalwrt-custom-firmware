@@ -4,7 +4,7 @@
 
 ## 目标
 
-- 固件版本默认跟随 ImmortalWrt `25.12.0`
+- 固件版本默认自动跟随 ImmortalWrt 最新稳定版
 - 目标平台固定为 `x86/64 generic`
 - 默认生成 PVE 最常用的 `ext4-combined.img.gz` 镜像
 - 根分区默认 `4096 MB`，避免每次升级后再手动扩容
@@ -19,11 +19,13 @@
 默认参数：
 
 ```text
-release=25.12.0
+release=latest
 rootfs_partsize=4096
 target=x86/64
 profile=generic
 ```
+
+`release=latest` 会在构建时从 ImmortalWrt 官方 releases 目录解析最新版本，并用对应版本的 ImageBuilder 和软件源构建。也可以手动指定固定版本，比如 `25.12.1`。
 
 也可以手动运行 workflow 时把 `rootfs_partsize` 改成 `2048`、`8192` 等。
 
@@ -42,6 +44,8 @@ config/router-installed-packages-2026-06-30.txt
 ```
 
 快照只做参考，不直接用于构建，避免把底层系统包、内核包和版本绑定包全部硬塞进固件。
+
+每次构建时，`config/packages.txt` 里的包都会由当前 ImmortalWrt 版本对应的软件源解析并安装最新可用版本。OpenClash、PassWall、DNS 和透明代理相关依赖已经写进清单，避免普通官方 sysupgrade 后后装包丢失。
 
 ## PVE 使用建议
 

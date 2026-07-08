@@ -31,6 +31,13 @@ luci-app-wol
 luci-i18n-wol-zh-cn
 
 # Proxy and network tools currently used on the router
+-dnsmasq
+dnsmasq-full
+geoview
+ip-full
+kmod-inet-diag
+kmod-nft-tproxy
+kmod-tun
 luci-app-openclash
 luci-app-passwall
 luci-i18n-passwall-zh-cn
@@ -81,6 +88,5 @@ kmod-igc
 kmod-r8125
 kmod-r8168
 kmod-vmxnet3
-kmod-tun
 kmod-usb-storage
 kmod-usb-storage-uas
