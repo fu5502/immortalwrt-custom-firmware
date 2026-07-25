@@ -339,6 +339,7 @@ verify_firmware_contents() {
   local -a required_files=(
     etc/init.d/istore
     etc/init.d/quickstart
+    usr/bin/update-passwall
     usr/lib/lua/luci/controller/store.lua
     usr/lib/lua/luci/controller/quickstart.lua
   )
@@ -471,6 +472,7 @@ chmod +x \
   "${custom_files}/etc/init.d/homepage-api" \
   "${custom_files}/etc/uci-defaults/90_luci-app-homepage-api" \
   "${custom_files}/usr/libexec/homepage-api/apply" \
+  "${custom_files}/usr/bin/update-passwall" \
   "${custom_files}/etc/uci-defaults/99-fu550-custom-firmware"
 
 packages="$(

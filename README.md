@@ -92,6 +92,23 @@ config/sdk/passwall.config
 
 PassWall 的核心依赖包，比如 `sing-box`、`xray-core`、`chinadns-ng` 等，仍由当前 ImmortalWrt release 软件源解析。这样可以避免把 Go/Rust 运行核心全部源码编译进 Actions，构建更稳定。
 
+## PassWall 一键更新
+
+固件内置 `/usr/bin/update-passwall`，默认从 PassWall 最新 GitHub Release 下载适配 OpenWrt/ImmortalWrt 25.12+ 的 APK：
+
+```sh
+# 一键升级
+update-passwall
+
+# 只检查最新版本
+update-passwall --check
+
+# 强制重新安装最新版本
+update-passwall --force
+```
+
+脚本会校验 GitHub Release 提供的 SHA256，安装前自动备份 `/etc/config/passwall*`，模拟安装并阻止删除已有依赖包，升级后恢复 PassWall 与 PassWall Server 原有的启用和运行状态。备份保存在 `/root/passwall-backups/`。
+
 每次构建都会产出：
 
 ```text

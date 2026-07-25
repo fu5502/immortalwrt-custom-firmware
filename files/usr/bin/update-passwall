@@ -1,0 +1,372 @@
+#!/bin/sh
+
+set -eu
+
+API_URL='https://api.github.com/repos/Openwrt-Passwall/openwrt-passwall/releases/latest'
+BACKUP_ROOT='/root/passwall-backups'
+LOCK_DIR='/var/lock/update-passwall.lock'
+mode='update'
+force_reinstall=0
+workdir=''
+lock_acquired=0
+services_captured=0
+client_init_enabled=0
+server_init_enabled=0
+client_was_running=0
+server_was_running=0
+
+log() {
+	printf '==> %s\n' "$*"
+}
+
+die() {
+	printf 'ERROR: %s\n' "$*" >&2
+	exit 1
+}
+
+usage() {
+	cat <<'EOF'
+Usage: update-passwall [--check|--force]
+
+  --check  Check the latest GitHub release without installing it.
+  --force  Reinstall the latest release even when versions match.
+EOF
+}
+
+service_enabled() {
+	[ -x "/etc/init.d/$1" ] && "/etc/init.d/$1" enabled >/dev/null 2>&1
+}
+
+process_running() {
+	pgrep -f "$1" >/dev/null 2>&1
+}
+
+restore_services() {
+	[ "$services_captured" -eq 1 ] || return 0
+
+	if [ -x /etc/init.d/passwall ]; then
+		if [ "$client_init_enabled" -eq 1 ]; then
+			/etc/init.d/passwall enable >/dev/null 2>&1 || true
+		else
+			/etc/init.d/passwall disable >/dev/null 2>&1 || true
+		fi
+
+		if [ "$client_was_running" -eq 1 ]; then
+			/etc/init.d/passwall start >/dev/null 2>&1 || true
+		else
+			/etc/init.d/passwall stop >/dev/null 2>&1 || true
+		fi
+	fi
+
+	if [ -x /etc/init.d/passwall_server ]; then
+		if [ "$server_init_enabled" -eq 1 ]; then
+			/etc/init.d/passwall_server enable >/dev/null 2>&1 || true
+		else
+			/etc/init.d/passwall_server disable >/dev/null 2>&1 || true
+		fi
+
+		if [ "$server_was_running" -eq 1 ]; then
+			/etc/init.d/passwall_server start >/dev/null 2>&1 || true
+		else
+			/etc/init.d/passwall_server stop >/dev/null 2>&1 || true
+		fi
+	fi
+
+	services_captured=0
+}
+
+cleanup() {
+	rc=$?
+	trap - EXIT INT TERM
+	restore_services
+
+	case "$workdir" in
+		/tmp/update-passwall.*)
+			rm -rf -- "$workdir"
+			;;
+	esac
+
+	if [ "$lock_acquired" -eq 1 ]; then
+		rm -f "$LOCK_DIR/pid"
+		rmdir "$LOCK_DIR" 2>/dev/null || true
+	fi
+
+	exit "$rc"
+}
+
+acquire_lock() {
+	old_pid=''
+
+	# Migrate the flock file used by updater versions before 2026-07-25.
+	if [ -f "$LOCK_DIR" ] && [ ! -d "$LOCK_DIR" ]; then
+		rm -f "$LOCK_DIR"
+	fi
+
+	if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+		old_pid="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+		if [ -n "$old_pid" ] &&
+			[ -r "/proc/$old_pid/cmdline" ] &&
+			tr '\0' ' ' < "/proc/$old_pid/cmdline" | grep -q 'update-passwall'; then
+			die "Another PassWall update is already running with PID $old_pid."
+		fi
+
+		rm -f "$LOCK_DIR/pid"
+		rmdir "$LOCK_DIR" 2>/dev/null ||
+			die "Could not clear stale updater lock: $LOCK_DIR"
+		mkdir "$LOCK_DIR" ||
+			die "Could not acquire updater lock: $LOCK_DIR"
+	fi
+
+	printf '%s\n' "$$" > "$LOCK_DIR/pid"
+	lock_acquired=1
+}
+
+installed_version() {
+	apk info -v 2>/dev/null |
+		sed -n "s/^$1-//p" |
+		head -n 1
+}
+
+verify_download() {
+	file="$1"
+	expected="$2"
+	actual="$(sha256sum "$file" | awk '{ print $1 }')"
+
+	[ -n "$expected" ] || die "GitHub did not provide a SHA256 digest for ${file##*/}"
+	[ "$actual" = "$expected" ] ||
+		die "SHA256 mismatch for ${file##*/}: expected $expected, got $actual"
+}
+
+case "${1:-}" in
+	'')
+		;;
+	--check)
+		mode='check'
+		;;
+	--force)
+		force_reinstall=1
+		;;
+	-h|--help)
+		usage
+		exit 0
+		;;
+	*)
+		usage >&2
+		exit 2
+		;;
+esac
+
+[ "$#" -le 1 ] || {
+	usage >&2
+	exit 2
+}
+
+[ "$(id -u)" -eq 0 ] || die 'This updater must run as root.'
+
+for command in apk curl jsonfilter sha256sum awk sed grep pgrep mktemp cmp tr sort; do
+	command -v "$command" >/dev/null 2>&1 || die "Required command is missing: $command"
+done
+
+acquire_lock
+trap cleanup EXIT INT TERM
+workdir="$(mktemp -d /tmp/update-passwall.XXXXXX)"
+
+log 'Reading the latest PassWall release from GitHub...'
+curl -fsSL --retry 3 --connect-timeout 20 \
+	-H 'Accept: application/vnd.github+json' \
+	-H 'User-Agent: fu550-passwall-updater' \
+	"$API_URL" \
+	-o "$workdir/release.json"
+
+tag="$(jsonfilter -i "$workdir/release.json" -e '@.tag_name')"
+[ -n "$tag" ] || die 'Could not determine the latest release tag.'
+
+app_name=''
+app_url=''
+app_sha=''
+i18n_name=''
+i18n_url=''
+i18n_sha=''
+app_count=0
+i18n_count=0
+
+jsonfilter -i "$workdir/release.json" -e '@.assets[*].name' > "$workdir/names"
+while IFS= read -r name; do
+	case "$name" in
+		25.12+_luci-app-passwall-*.apk)
+			app_name="$name"
+			app_count=$((app_count + 1))
+			;;
+		25.12+_luci-i18n-passwall-zh-cn-*.apk)
+			i18n_name="$name"
+			i18n_count=$((i18n_count + 1))
+			;;
+	esac
+done < "$workdir/names"
+
+[ "$app_count" -eq 1 ] || die "Expected one 25.12+ PassWall APK, found $app_count."
+[ "$i18n_count" -eq 1 ] || die "Expected one 25.12+ Chinese translation APK, found $i18n_count."
+
+app_url="$(
+	jsonfilter -i "$workdir/release.json" \
+		-e "@.assets[@.name=\"$app_name\"].browser_download_url"
+)"
+app_sha="$(
+	jsonfilter -i "$workdir/release.json" \
+		-e "@.assets[@.name=\"$app_name\"].digest"
+)"
+i18n_url="$(
+	jsonfilter -i "$workdir/release.json" \
+		-e "@.assets[@.name=\"$i18n_name\"].browser_download_url"
+)"
+i18n_sha="$(
+	jsonfilter -i "$workdir/release.json" \
+		-e "@.assets[@.name=\"$i18n_name\"].digest"
+)"
+app_sha="${app_sha#sha256:}"
+i18n_sha="${i18n_sha#sha256:}"
+
+latest_app="${app_name#25.12+_luci-app-passwall-}"
+latest_app="${latest_app%.apk}"
+latest_i18n="${i18n_name#25.12+_luci-i18n-passwall-zh-cn-}"
+latest_i18n="${latest_i18n%.apk}"
+current_app="$(installed_version luci-app-passwall)"
+current_i18n="$(installed_version luci-i18n-passwall-zh-cn)"
+
+log "Installed: luci-app-passwall ${current_app:-not-installed}"
+log "Latest:    luci-app-passwall $latest_app (release $tag)"
+log "Installed: luci-i18n-passwall-zh-cn ${current_i18n:-not-installed}"
+log "Latest:    luci-i18n-passwall-zh-cn $latest_i18n"
+
+if [ "$mode" = 'check' ]; then
+	if [ "$current_app" = "$latest_app" ] && [ "$current_i18n" = "$latest_i18n" ]; then
+		log 'PassWall is up to date.'
+	else
+		log 'A PassWall update is available.'
+	fi
+	exit 0
+fi
+
+if [ "$force_reinstall" -eq 0 ] &&
+	[ "$current_app" = "$latest_app" ] &&
+	[ "$current_i18n" = "$latest_i18n" ]; then
+	log 'PassWall is already up to date. Use --force to reinstall it.'
+	exit 0
+fi
+
+app_file="$workdir/$app_name"
+i18n_file="$workdir/$i18n_name"
+
+log 'Downloading release APKs...'
+curl -fsSL --retry 3 --connect-timeout 20 -o "$app_file" "$app_url"
+curl -fsSL --retry 3 --connect-timeout 20 -o "$i18n_file" "$i18n_url"
+verify_download "$app_file" "$app_sha"
+verify_download "$i18n_file" "$i18n_sha"
+log 'Release SHA256 verification passed.'
+
+simulate_initial="$workdir/simulate-initial.log"
+if ! apk --allow-untrusted --simulate add "$app_file" "$i18n_file" > "$simulate_initial" 2>&1; then
+	cat "$simulate_initial" >&2
+	die 'APK simulation failed.'
+fi
+
+preserve_packages=''
+for package in $(awk '$2 == "Purging" { print $3 }' "$simulate_initial"); do
+	if apk info -e "$package" >/dev/null 2>&1; then
+		case " $preserve_packages " in
+			*" $package "*)
+				;;
+			*)
+				preserve_packages="$preserve_packages $package"
+				;;
+		esac
+	fi
+done
+
+simulate_final="$workdir/simulate-final.log"
+# Intentional word splitting turns the retained package list into apk arguments.
+if ! apk --allow-untrusted --simulate add $preserve_packages \
+	"$app_file" "$i18n_file" > "$simulate_final" 2>&1; then
+	cat "$simulate_final" >&2
+	die 'APK simulation with retained dependencies failed.'
+fi
+
+if grep -q ') Purging ' "$simulate_final"; then
+	cat "$simulate_final" >&2
+	die 'The update would remove installed packages, so it was cancelled.'
+fi
+
+unexpected_downgrades="$(
+	awk '$2 == "Downgrading" { print $3 }' "$simulate_final" |
+		grep -v '^luci-i18n-passwall-zh-cn$' || true
+)"
+[ -z "$unexpected_downgrades" ] ||
+	die "The update would downgrade unexpected packages: $unexpected_downgrades"
+
+log 'APK simulation passed without removing installed packages.'
+cat "$simulate_final"
+
+safe_tag="$(printf '%s' "$tag" | tr -cd 'A-Za-z0-9._-')"
+timestamp="$(date +%Y%m%d-%H%M%S)"
+backup_dir="$BACKUP_ROOT/${timestamp}-${safe_tag:-release}"
+umask 077
+mkdir -p "$backup_dir"
+
+for config in /etc/config/passwall*; do
+	[ -e "$config" ] || continue
+	cp -p "$config" "$backup_dir/"
+done
+if [ -d /etc/passwall ]; then
+	cp -a /etc/passwall "$backup_dir/"
+fi
+apk info -v 2>/dev/null | grep -i passwall | sort > "$backup_dir/packages-before.txt" || true
+sha256sum /etc/config/passwall* > "$backup_dir/config-before.sha256" 2>/dev/null || true
+log "Configuration backup: $backup_dir"
+
+service_enabled passwall && client_init_enabled=1
+service_enabled passwall_server && server_init_enabled=1
+process_running '/tmp/etc/passwall/' && client_was_running=1
+process_running '/tmp/etc/passwall_server/' && server_was_running=1
+services_captured=1
+
+[ "$client_was_running" -eq 0 ] || /etc/init.d/passwall stop
+[ "$server_was_running" -eq 0 ] || /etc/init.d/passwall_server stop
+
+log 'Installing PassWall...'
+force_option=''
+[ "$force_reinstall" -eq 0 ] || force_option='--force-reinstall'
+# Intentional word splitting supplies optional flags and retained package names.
+apk --allow-untrusted add $force_option $preserve_packages "$app_file" "$i18n_file"
+
+rm -rf /tmp/luci-indexcache /tmp/luci-indexcache.* /tmp/luci-modulecache
+restore_services
+
+final_app="$(installed_version luci-app-passwall)"
+final_i18n="$(installed_version luci-i18n-passwall-zh-cn)"
+[ "$final_app" = "$latest_app" ] ||
+	die "Installed PassWall version is $final_app, expected $latest_app."
+[ "$final_i18n" = "$latest_i18n" ] ||
+	die "Installed translation version is $final_i18n, expected $latest_i18n."
+
+config_changed=0
+for original in "$backup_dir"/passwall*; do
+	[ -f "$original" ] || continue
+	name="${original##*/}"
+	case "$name" in
+		*.apk-new)
+			continue
+			;;
+	esac
+	if [ ! -f "/etc/config/$name" ] || ! cmp -s "$original" "/etc/config/$name"; then
+		config_changed=1
+		log "NOTICE: /etc/config/$name changed during the package upgrade."
+	fi
+done
+
+if [ "$config_changed" -eq 0 ]; then
+	log 'Existing PassWall configuration files are unchanged.'
+else
+	log "The pre-update configuration remains available in $backup_dir."
+fi
+
+log "PassWall update complete: $final_app"
