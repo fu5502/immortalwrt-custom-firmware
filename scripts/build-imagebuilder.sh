@@ -21,6 +21,7 @@ artifacts="${workspace}/artifacts"
 target_dash="${TARGET_PATH//\//-}"
 requested_release="${RELEASE}"
 upstream_summary="${run_root}/UPSTREAM-PACKAGES.txt"
+firmware_contents_summary="${run_root}/FIRMWARE-CONTENTS.txt"
 upstream_extra_packages=""
 
 resolve_python() {
@@ -325,6 +326,64 @@ build_upstream_sdk_packages() {
   done
 }
 
+verify_firmware_contents() {
+  local installed_db rootfs_dir package version file
+  local -a required_packages=(
+    luci-app-store
+    luci-app-quickstart
+    quickstart
+    taskd
+    luci-lib-taskd
+  )
+  local -a required_files=(
+    etc/init.d/istore
+    etc/init.d/quickstart
+    usr/lib/lua/luci/controller/store.lua
+    usr/lib/lua/luci/controller/quickstart.lua
+  )
+
+  installed_db="$(
+    find "${workdir}/build_dir" -type f \
+      -path '*/lib/apk/db/installed' \
+      -print \
+      -quit
+  )"
+
+  if [ -z "${installed_db}" ]; then
+    echo "Could not find the firmware APK installed database" >&2
+    exit 1
+  fi
+
+  rootfs_dir="${installed_db%/lib/apk/db/installed}"
+  : > "${firmware_contents_summary}"
+
+  echo "Verifying required iStore and QuickStart packages in ${rootfs_dir}"
+  for package in "${required_packages[@]}"; do
+    if ! grep -qxF "P:${package}" "${installed_db}"; then
+      echo "Required firmware package is missing: ${package}" >&2
+      exit 1
+    fi
+
+    version="$(
+      awk -v wanted="P:${package}" '
+        $0 == wanted { found = 1; next }
+        found && /^V:/ { print substr($0, 3); exit }
+        found && $0 == "" { exit }
+      ' "${installed_db}"
+    )"
+    printf 'package|%s|%s\n' "${package}" "${version:-unknown}" |
+      tee -a "${firmware_contents_summary}"
+  done
+
+  for file in "${required_files[@]}"; do
+    if [ ! -e "${rootfs_dir}/${file}" ]; then
+      echo "Required firmware file is missing: /${file}" >&2
+      exit 1
+    fi
+    printf 'file|/%s\n' "${file}" | tee -a "${firmware_contents_summary}"
+  done
+}
+
 if [ "${BUILD_UPSTREAM_PACKAGES}" = "1" ]; then
   configure_upstream_apk_repositories
   download_upstream_release_apks
@@ -411,6 +470,12 @@ make -C "${workdir}" image \
   FILES="${custom_files}" \
   V=s
 
+if [ "${BUILD_UPSTREAM_PACKAGES}" = "1" ]; then
+  verify_firmware_contents
+else
+  echo "verification|skipped|upstream package refresh disabled" > "${firmware_contents_summary}"
+fi
+
 mapfile -t firmware_images < <(
   find "${workdir}/bin/targets" -type f \
     -name '*ext4-combined.img.gz' \
@@ -426,6 +491,7 @@ fi
 
 cp -v "${firmware_images[0]}" "${artifacts}/"
 cp -v "${upstream_summary}" "${artifacts}/UPSTREAM-PACKAGES.txt"
+cp -v "${firmware_contents_summary}" "${artifacts}/FIRMWARE-CONTENTS.txt"
 (
   cd "${artifacts}"
   sha256sum * > SHA256SUMS.txt
@@ -446,6 +512,7 @@ Upstream package refresh: ${BUILD_UPSTREAM_PACKAGES}
 Upstream apk repository config: ${UPSTREAM_APK_REPOSITORIES_FILE}
 Upstream release apk config: ${UPSTREAM_RELEASE_APKS_FILE}
 Upstream SDK package config: ${UPSTREAM_SDK_PACKAGES_FILE}
+Firmware content verification: FIRMWARE-CONTENTS.txt
 Commit: ${GITHUB_SHA:-local}
 EOF
 

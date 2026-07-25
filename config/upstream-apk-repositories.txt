@@ -6,4 +6,4 @@
 # - repository_urls is a space-separated list of packages.adb URLs.
 # - packages is a space-separated list appended to the firmware package set.
 
-istore|https://istore.istoreos.com/repo-apk/istore-apk.pem|https://istore.istoreos.com/repo-apk/x86_64/nas/packages.adb https://istore.istoreos.com/repo-apk/all/nas_luci/packages.adb https://istore.istoreos.com/repo-apk/all/store/packages.adb https://istore.istoreos.com/repo-apk/all/meta/packages.adb https://istore.istoreos.com/repo-apk/all/compat/packages.adb|luci-app-store luci-i18n-quickstart-zh-cn
+istore|https://istore.istoreos.com/repo-apk/istore-apk.pem|https://istore.istoreos.com/repo-apk/x86_64/nas/packages.adb https://istore.istoreos.com/repo-apk/all/nas_luci/packages.adb https://istore.istoreos.com/repo-apk/all/store/packages.adb https://istore.istoreos.com/repo-apk/all/meta/packages.adb https://istore.istoreos.com/repo-apk/all/compat/packages.adb|luci-app-store luci-app-quickstart luci-i18n-quickstart-zh-cn
