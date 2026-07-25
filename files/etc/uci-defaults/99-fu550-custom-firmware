@@ -1,7 +1,17 @@
 #!/bin/sh
 
 uci -q set system.@system[0].hostname='ImmortalWrt'
+uci -q get system.@imm_init[0] >/dev/null || uci -q add system imm_init >/dev/null
+uci -q set system.@imm_init[0].apk_mirror='https://downloads.immortalwrt.org'
 uci -q commit system
+
+distfeeds='/etc/apk/repositories.d/distfeeds.list'
+if [ -f "$distfeeds" ]; then
+	sed -i \
+		-e 's#https://downloads\.openwrt\.org#https://downloads.immortalwrt.org#g' \
+		-e 's#https://mirrors\.vsean\.net/openwrt#https://downloads.immortalwrt.org#g' \
+		"$distfeeds"
+fi
 
 for service in tasks quickstart istore; do
 	[ -x "/etc/init.d/${service}" ] || continue

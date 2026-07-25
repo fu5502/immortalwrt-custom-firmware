@@ -328,6 +328,7 @@ build_upstream_sdk_packages() {
 
 verify_firmware_contents() {
   local installed_db rootfs_dir package version file
+  local distfeeds_file firstboot_file
   local -a required_packages=(
     luci-app-store
     luci-app-quickstart
@@ -355,7 +356,34 @@ verify_firmware_contents() {
   fi
 
   rootfs_dir="${installed_db%/lib/apk/db/installed}"
+  distfeeds_file="${rootfs_dir}/etc/apk/repositories.d/distfeeds.list"
+  firstboot_file="${rootfs_dir}/etc/uci-defaults/99-fu550-custom-firmware"
   : > "${firmware_contents_summary}"
+
+  if [ ! -f "${distfeeds_file}" ]; then
+    echo "Firmware distfeeds file is missing: ${distfeeds_file}" >&2
+    exit 1
+  fi
+  if grep -Eq 'downloads\.openwrt\.org|mirrors\.vsean\.net/openwrt' "${distfeeds_file}"; then
+    echo "Firmware distfeeds contains an incompatible OpenWrt repository:" >&2
+    cat "${distfeeds_file}" >&2
+    exit 1
+  fi
+  if ! grep -qF "${DOWNLOAD_BASE}/${RELEASE}/" "${distfeeds_file}"; then
+    echo "Firmware distfeeds does not contain the expected ImmortalWrt release repository:" >&2
+    cat "${distfeeds_file}" >&2
+    exit 1
+  fi
+  printf 'repository|distfeeds|%s/%s/\n' "${DOWNLOAD_BASE}" "${RELEASE}" |
+    tee -a "${firmware_contents_summary}"
+
+  if [ ! -f "${firstboot_file}" ] ||
+    ! grep -qF "apk_mirror='https://downloads.immortalwrt.org'" "${firstboot_file}"; then
+    echo "Firmware first-boot source repair is missing or invalid: ${firstboot_file}" >&2
+    exit 1
+  fi
+  printf 'firstboot|apk-mirror|https://downloads.immortalwrt.org\n' |
+    tee -a "${firmware_contents_summary}"
 
   echo "Verifying required iStore and QuickStart packages in ${rootfs_dir}"
   for package in "${required_packages[@]}"; do
