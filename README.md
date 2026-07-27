@@ -14,6 +14,7 @@
 - PassWall LuCI 包默认用 ImmortalWrt SDK 从 `Openwrt-Passwall` 最新 feed 编译
 - iStore 商店和 quickstart 首页默认从 iStore apk 源安装
 - 自动嵌入 `fu5502/luci-app-homepage-api` 的 LuCI 文件
+- LuCI“状态 → 概览”内置自定义固件项目和 Releases 入口
 - GitHub Actions 构建成功后自动发布到 Releases
 
 ## 构建

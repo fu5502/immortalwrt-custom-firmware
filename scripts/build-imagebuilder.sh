@@ -328,7 +328,7 @@ build_upstream_sdk_packages() {
 
 verify_firmware_contents() {
   local installed_db rootfs_dir package version file
-  local distfeeds_file firstboot_file
+  local distfeeds_file firstboot_file firmware_project_file
   local -a required_packages=(
     luci-app-store
     luci-app-quickstart
@@ -340,6 +340,7 @@ verify_firmware_contents() {
     etc/init.d/istore
     etc/init.d/quickstart
     usr/bin/update-passwall
+    www/luci-static/resources/view/status/include/15_firmware_project.js
     usr/lib/lua/luci/controller/store.lua
     usr/lib/lua/luci/controller/quickstart.lua
   )
@@ -359,6 +360,7 @@ verify_firmware_contents() {
   rootfs_dir="${installed_db%/lib/apk/db/installed}"
   distfeeds_file="${rootfs_dir}/etc/apk/repositories.d/distfeeds.list"
   firstboot_file="${rootfs_dir}/etc/uci-defaults/99-fu550-custom-firmware"
+  firmware_project_file="${rootfs_dir}/www/luci-static/resources/view/status/include/15_firmware_project.js"
   : > "${firmware_contents_summary}"
 
   if [ ! -f "${distfeeds_file}" ]; then
@@ -384,6 +386,14 @@ verify_firmware_contents() {
     exit 1
   fi
   printf 'firstboot|apk-mirror|https://downloads.immortalwrt.org\n' |
+    tee -a "${firmware_contents_summary}"
+
+  if [ ! -f "${firmware_project_file}" ] ||
+    ! grep -qF 'https://github.com/fu5502/immortalwrt-custom-firmware' "${firmware_project_file}"; then
+    echo "Firmware project status link is missing or invalid: ${firmware_project_file}" >&2
+    exit 1
+  fi
+  printf 'status-link|firmware-project|https://github.com/fu5502/immortalwrt-custom-firmware\n' |
     tee -a "${firmware_contents_summary}"
 
   echo "Verifying required iStore and QuickStart packages in ${rootfs_dir}"
