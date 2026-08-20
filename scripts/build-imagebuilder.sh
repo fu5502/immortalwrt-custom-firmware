@@ -348,6 +348,7 @@ verify_firmware_contents() {
   installed_db="$(
     find "${workdir}/build_dir" -type f \
       -path '*/lib/apk/db/installed' \
+      ! -path '*/root.orig*/*' \
       -print \
       -quit
   )"
