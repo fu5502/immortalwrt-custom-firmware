@@ -15,6 +15,8 @@
 - iStore 商店和 quickstart 首页默认从 iStore apk 源安装
 - 自动嵌入 `fu5502/luci-app-homepage-api` 的 LuCI 文件
 - LuCI“状态 → 概览”内置自定义固件项目和 Releases 入口
+- 内置 Cloudflare 节点优选与提速插件（`服务 -> CF 节点优选` 与 `/root/cf_optimize` 测速脚本）
+- 修复 LuCI 状态概览中 CPU 使用率显示为 `?` 以及型号尾部出现 `undefined` 的问题
 - GitHub Actions 构建成功后自动发布到 Releases
 
 ## 构建
@@ -141,3 +143,19 @@ https://github.com/fu5502/luci-app-homepage-api
 ```
 
 如果使用保留配置升级，现有 `/etc/config/homepage_api` 和 rpcd 密码哈希会继续保留。
+
+## Cloudflare 节点优选（优选 IP）
+
+固件内置 Cloudflare 优选节点管理页面与测速任务脚本：
+
+- 菜单位置：`服务 -> CF 节点优选`（`/cgi-bin/luci/admin/services/cf_optimize`）
+- 任务脚本目录：`/root/cf_optimize/`
+- 核心脚本：`/root/cf_optimize/cf-autoupdate.sh`（执行测速、提取最优 IP、接管 Argo Tunnel 并刷新 DNS）
+- 测速工具与 IP 库：`/root/cf_optimize/CloudflareST`、`ip.txt`、`ipv6.txt`
+- 保留配置升级：`/root/cf_optimize/` 已加入 `/etc/sysupgrade.conf`，升级固件不会丢失本地测速数据与自定义参数。
+
+## 系统概览 CPU 使用率与型号修复
+
+ImmortalWrt 25.12+ 的 `luci-mod-status` 在系统概况模块调用了 `luci.getCPUUsage`、`luci.getCPUInfo` 和 `luci.getCPUBench`。当 `luci-base` 的 ucode RPC 未提供对应方法时，会导致 CPU 使用率显示为 `?`，且型号末尾追加 `undefined`。
+
+本固件在 `/usr/share/rpcd/ucode/luci` 中补充了这组标准 RPC 方法，并在 `/www/luci-static/resources/view/status/include/10_system.js` 中做了防空保护，确保 CPU 实时使用率（%）正常刷新，型号与 CPU 架构显示完整。

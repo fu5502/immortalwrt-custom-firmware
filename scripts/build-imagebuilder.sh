@@ -343,6 +343,12 @@ verify_firmware_contents() {
     www/luci-static/resources/view/status/include/15_firmware_project.js
     usr/lib/lua/luci/controller/store.lua
     usr/lib/lua/luci/controller/quickstart.lua
+    usr/share/rpcd/ucode/luci
+    www/luci-static/resources/view/status/include/10_system.js
+    usr/lib/lua/luci/controller/cf_optimize.lua
+    usr/lib/lua/luci/view/cf_optimize/dashboard.htm
+    usr/share/rpcd/acl.d/luci-app-cf_optimize.json
+    root/cf_optimize/cf-autoupdate.sh
   )
 
   installed_db="$(
@@ -395,6 +401,22 @@ verify_firmware_contents() {
     exit 1
   fi
   printf 'status-link|firmware-project|https://github.com/fu5502/immortalwrt-custom-firmware\n' |
+    tee -a "${firmware_contents_summary}"
+
+  local ucode_luci_file="${rootfs_dir}/usr/share/rpcd/ucode/luci"
+  if [ ! -f "${ucode_luci_file}" ] || ! grep -qF 'getCPUUsage:' "${ucode_luci_file}"; then
+    echo "Firmware ucode luci is missing getCPUUsage fix: ${ucode_luci_file}" >&2
+    exit 1
+  fi
+  printf 'feature|cpu-usage-fix|/usr/share/rpcd/ucode/luci\n' |
+    tee -a "${firmware_contents_summary}"
+
+  local cf_optimize_file="${rootfs_dir}/usr/lib/lua/luci/controller/cf_optimize.lua"
+  if [ ! -f "${cf_optimize_file}" ]; then
+    echo "Firmware CF Optimize controller is missing: ${cf_optimize_file}" >&2
+    exit 1
+  fi
+  printf 'feature|cf-optimize|/usr/lib/lua/luci/controller/cf_optimize.lua\n' |
     tee -a "${firmware_contents_summary}"
 
   echo "Verifying required iStore and QuickStart packages in ${rootfs_dir}"
@@ -484,7 +506,9 @@ chmod +x \
   "${custom_files}/etc/uci-defaults/90_luci-app-homepage-api" \
   "${custom_files}/usr/libexec/homepage-api/apply" \
   "${custom_files}/usr/bin/update-passwall" \
-  "${custom_files}/etc/uci-defaults/99-fu550-custom-firmware"
+  "${custom_files}/etc/uci-defaults/99-fu550-custom-firmware" \
+  "${custom_files}/root/cf_optimize/cf-autoupdate.sh" \
+  "${custom_files}/root/cf_optimize/cfst_hosts.sh"
 
 packages="$(
   sed -e 's/#.*$//' -e '/^[[:space:]]*$/d' "${workspace}/config/packages.txt" |

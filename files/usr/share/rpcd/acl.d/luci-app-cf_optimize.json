@@ -1,0 +1,14 @@
+{
+    "luci-app-cf_optimize": {
+        "description": "Grant access to CF Optimize dashboard",
+        "read": {
+            "ubus": {
+                "luci": [ "getFeatures" ]
+            },
+            "file": [
+                "/root/cf_optimize/cf-autoupdate.sh"
+            ]
+        },
+        "write": {}
+    }
+}

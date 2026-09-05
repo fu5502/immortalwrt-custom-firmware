@@ -1,0 +1,78 @@
+<%+header%>
+<h2 name="content">Cloudflare 节点优选与提速</h2>
+<div class="cbi-map-descr">自动测试 Cloudflare 边缘节点延迟，接管 Argo Tunnel 解析，提升 NAS 穿透访问速度。</div>
+
+<%
+local fs = require "nixio.fs"
+local result_content = fs.readfile("/root/cf_optimize/result.csv")
+local last_run = fs.stat("/root/cf_optimize/result.csv", "mtime")
+local run_time = last_run and os.date("%Y-%m-%d %H:%M:%S", last_run) or "暂未执行测速"
+
+local best_ip = "等待测速..."
+local records = {}
+if result_content then
+    local lines = {}
+    for line in result_content:gmatch("[^\r\n]+") do
+        table.insert(lines, line)
+    end
+    if #lines >= 2 then
+        best_ip = lines[2]:match("([^,]+)")
+        for i = 2, math.min(6, #lines) do
+            local parts = {}
+            for part in lines[i]:gmatch("([^,]+)") do table.insert(parts, part) end
+            table.insert(records, parts)
+        end
+    end
+end
+%>
+
+<fieldset class="cbi-section">
+    <h3>实时接管状态</h3>
+    <table class="cbi-section-table" style="width:100%; border:1px solid #ddd; margin-bottom: 20px;">
+        <tr class="cbi-section-table-titles">
+            <th class="cbi-section-table-cell">最后测速时间</th>
+            <th class="cbi-section-table-cell">正在生效的极速 IP</th>
+        </tr>
+        <tr class="cbi-section-table-row">
+            <td class="cbi-section-table-cell" style="color:#555; font-weight:bold;"><%=run_time%></td>
+            <td class="cbi-section-table-cell" style="color:#00aa00; font-weight:bold; font-size:16px;"><%=best_ip%></td>
+        </tr>
+    </table>
+
+    <h3>Top 5 测速候选池 (数据源自实时测速)</h3>
+    <table class="cbi-section-table" style="width:100%; border:1px solid #ddd;">
+        <tr class="cbi-section-table-titles">
+            <th class="cbi-section-table-cell">IP 地址</th>
+            <th class="cbi-section-table-cell">丢包率</th>
+            <th class="cbi-section-table-cell">平均延迟</th>
+            <th class="cbi-section-table-cell">下载速度</th>
+        </tr>
+        <% for i, v in ipairs(records) do %>
+        <tr class="cbi-section-table-row cbi-rowstyle-<%=i%2==0 and 2 or 1%>">
+            <td class="cbi-section-table-cell"><strong><%=v[1]%></strong></td>
+            <td class="cbi-section-table-cell"><%=v[4]%></td>
+            <td class="cbi-section-table-cell"><%=v[5]%></td>
+            <td class="cbi-section-table-cell" style="color:#0066cc; font-weight:bold;"><%=v[6]%> MB/s</td>
+        </tr>
+        <% end %>
+        <% if #records == 0 then %>
+        <tr class="cbi-section-table-row"><td colspan="4" class="cbi-section-table-cell">暂无测速数据，后台可能正在运行中...</td></tr>
+        <% end %>
+    </table>
+</fieldset>
+
+<fieldset class="cbi-section">
+    <h3>底层任务脚本配置</h3>
+    <div class="cbi-map-descr">路径：<strong>/root/cf_optimize/cf-autoupdate.sh</strong> （已配置通过 /releases/latest/download 始终拉取最新版本）</div>
+    <textarea class="cbi-input-textarea" style="width:100%; height:320px; font-family:Consolas, Monaco, monospace; margin-top:5px; padding:12px; background:#f8f9fa; border:1px solid #ccc; border-radius:4px; font-size: 13px;" readonly>
+<%
+local script = fs.readfile("/root/cf_optimize/cf-autoupdate.sh")
+if script then
+    write(luci.util.pcdata(script))
+else
+    write("未找到脚本文件。")
+end
+%>
+    </textarea>
+</fieldset>
+<%+footer%>
