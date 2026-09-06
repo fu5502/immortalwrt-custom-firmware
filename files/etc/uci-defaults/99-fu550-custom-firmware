@@ -18,6 +18,11 @@ for service in tasks quickstart istore; do
 	"/etc/init.d/${service}" enable >/dev/null 2>&1
 done
 
+uci -q get openclash.config >/dev/null && {
+	uci -q set openclash.config.core_version='linux-amd64-v2'
+	uci -q commit openclash
+}
+
 [ -d /root/cf_optimize ] && chmod +x /root/cf_optimize/*.sh 2>/dev/null
 
 rm -rf /tmp/luci-indexcache /tmp/luci-indexcache.* /tmp/luci-modulecache
