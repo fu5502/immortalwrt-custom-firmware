@@ -32,8 +32,15 @@ fi
 
 logger -t CF-Optimize "测速完成，最优 IP: $BEST_IP"
 
+# 1. 接管 Argo Tunnel
 sed -i '/v2.argotunnel.com/d' /etc/hosts
 echo "$BEST_IP region1.v2.argotunnel.com" >> /etc/hosts
 echo "$BEST_IP region2.v2.argotunnel.com" >> /etc/hosts
+
+# 2. 接管 OpenClash 备用代理优选 IP
+sed -i '/cf-proxy.local/d' /etc/hosts
+echo "$BEST_IP cf-proxy.local" >> /etc/hosts
+echo "$BEST_IP cf-proxy.local" > /tmp/hosts/cf-proxy
+
 /etc/init.d/dnsmasq reload
 logger -t CF-Optimize "Hosts 和 DNS 已更新生效。"
