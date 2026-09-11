@@ -739,6 +739,20 @@ getCPUBench: {
 				return { tempinfo: error() };
 			}
 		}
+	},
+
+	getOnlineUsers: {
+		call: function() {
+			const fd = popen('gw=$(ip route 2>/dev/null | awk \x27/default/{print $3}\x27); { awk -v g="$gw" \x27$1 != g && $4 != "00:00:00:00:00:00" && $3 == "0x2" {print $4}\x27 /proc/net/arp; [ -f /tmp/dhcp.leases ] && awk \x27{print $2}\x27 /tmp/dhcp.leases; } 2>/dev/null | sort -u | grep -c .');
+			if (fd) {
+				let onlineusers = int(fd.read('all'));
+				fd.close();
+
+				return { onlineusers: onlineusers };
+			} else {
+				return { onlineusers: error() };
+			}
+		}
 	}
 };
 
