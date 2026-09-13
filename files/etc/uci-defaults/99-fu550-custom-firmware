@@ -36,6 +36,50 @@ uci -q get openclash.config >/dev/null && {
 	uci -q commit openclash
 }
 
+# Auto-migrate legacy passwall_server schema (26.7 -> 26.9)
+if [ -f /etc/config/passwall_server ]; then
+	lua -e '
+	local uci = require("luci.model.uci").cursor()
+	local need_save = false
+	uci:foreach("passwall_server", "user", function(s)
+		local id = s[".name"]
+		local port = s.port
+		local type = s.type
+		if port and type then
+			need_save = true
+			local user_id = "user_" .. (s.remarks or id)
+			local username = s.username or s.remarks or "user"
+			local password = s.password or ""
+			uci:section("passwall_server", "user", user_id, {
+				username = username,
+				password = password
+			})
+			local s_opts = {
+				enable = s.enable or "1",
+				remarks = s.remarks or id,
+				type = type,
+				port = port,
+				log = s.log or "1"
+			}
+			if type == "Socks" then
+				s_opts.auth = s.auth or "1"
+				s_opts.user = user_id
+			elseif type == "sing-box" then
+				s_opts.protocol = s.protocol or "shadowsocks"
+				s_opts.method = s.method or "none"
+				s_opts.ss_password = password
+				s_opts.password = password
+			end
+			uci:section("passwall_server", "server", id, s_opts)
+			uci:delete("passwall_server", id)
+		end
+	end)
+	if need_save then
+		uci:commit("passwall_server")
+	end
+	' 2>/dev/null || true
+fi
+
 [ -d /root/cf_optimize ] && chmod +x /root/cf_optimize/*.sh 2>/dev/null
 
 rm -rf /tmp/luci-indexcache /tmp/luci-indexcache.* /tmp/luci-modulecache
