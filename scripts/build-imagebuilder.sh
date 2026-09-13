@@ -7,6 +7,7 @@ PROFILE="${PROFILE:-generic}"
 ROOTFS_PARTSIZE="${ROOTFS_PARTSIZE:-4096}"
 IMAGEBUILDER_URL="${IMAGEBUILDER_URL:-}"
 HOMEPAGE_API_REPO="${HOMEPAGE_API_REPO:-fu5502/luci-app-homepage-api}"
+OPENBOX_REPO="${OPENBOX_REPO:-liandu2024/Open-Box}"
 DOWNLOAD_BASE="${DOWNLOAD_BASE:-https://downloads.immortalwrt.org/releases}"
 BUILD_UPSTREAM_PACKAGES="${BUILD_UPSTREAM_PACKAGES:-${BUILD_UPSTREAM_PROXY_PACKAGES:-1}}"
 UPSTREAM_APK_REPOSITORIES_FILE="${UPSTREAM_APK_REPOSITORIES_FILE:-config/upstream-apk-repositories.txt}"
@@ -349,6 +350,9 @@ verify_firmware_contents() {
     usr/lib/lua/luci/view/cf_optimize/dashboard.htm
     usr/share/rpcd/acl.d/luci-app-cf_optimize.json
     root/cf_optimize/cf-autoupdate.sh
+    opt/open-box/meta.json
+    etc/init.d/openbox-panel
+    usr/share/luci/menu.d/luci-app-openbox.json
   )
 
   installed_db="$(
@@ -501,6 +505,49 @@ homepage_api_commit="$(git -C "${workdir}/homepage-api" rev-parse HEAD)"
 rsync -a "${workdir}/homepage-api/root/" "${custom_files}/"
 mkdir -p "${custom_files}/www"
 rsync -a "${workdir}/homepage-api/htdocs/" "${custom_files}/www/"
+
+echo "Embedding Open-Box from ${OPENBOX_REPO}"
+openbox_release_json="$(curl -fsSL --retry 3 "https://api.github.com/repos/${OPENBOX_REPO}/releases/latest" || true)"
+if [ -n "${openbox_release_json}" ]; then
+  openbox_tag="$(
+    printf '%s\n' "${openbox_release_json}" |
+      "${PYTHON_BIN}" -c 'import json,sys; print(json.load(sys.stdin).get("tag_name", "unknown"))'
+  )"
+  openbox_asset_url="$(
+    printf '%s\n' "${openbox_release_json}" |
+      "${PYTHON_BIN}" -c 'import json,sys; data=json.load(sys.stdin); matches=[a for a in data.get("assets", []) if a.get("name") == "open-box-linux-x64.tar.gz"]; print(matches[0]["browser_download_url"] if matches else "")'
+  )"
+  if [ -n "${openbox_asset_url}" ]; then
+    echo "Downloading Open-Box (${openbox_tag}): ${openbox_asset_url}"
+    mkdir -p "${workdir}/openbox-download" "${custom_files}/opt/open-box"
+    curl -fL --retry 3 -o "${workdir}/openbox-download/open-box.tar.gz" "${openbox_asset_url}"
+    tar -xzf "${workdir}/openbox-download/open-box.tar.gz" -C "${custom_files}/opt/open-box"
+
+    mkdir -p "${custom_files}/etc/init.d" \
+             "${custom_files}/usr/share/luci/menu.d" \
+             "${custom_files}/usr/share/rpcd/acl.d" \
+             "${custom_files}/www/luci-static/resources/view/openbox"
+
+    cp -f "${custom_files}/opt/open-box/openwrt/initd/openbox" "${custom_files}/etc/init.d/openbox"
+    cp -f "${custom_files}/opt/open-box/openwrt/initd/openbox-panel" "${custom_files}/etc/init.d/openbox-panel"
+
+    cp -f "${custom_files}/opt/open-box/openwrt/luci/root/usr/share/luci/menu.d/luci-app-openbox.json" \
+          "${custom_files}/usr/share/luci/menu.d/luci-app-openbox.json"
+    cp -f "${custom_files}/opt/open-box/openwrt/luci/root/usr/share/rpcd/acl.d/luci-app-openbox.json" \
+          "${custom_files}/usr/share/rpcd/acl.d/luci-app-openbox.json"
+    cp -f "${custom_files}/opt/open-box/openwrt/luci/htdocs/luci-static/resources/view/openbox/status.js" \
+          "${custom_files}/www/luci-static/resources/view/openbox/status.js"
+
+    chmod +x \
+      "${custom_files}/etc/init.d/openbox" \
+      "${custom_files}/etc/init.d/openbox-panel" \
+      "${custom_files}/opt/open-box/update.sh" \
+      "${custom_files}/opt/open-box/uninstall.sh"
+
+    printf 'release-tar|open-box|https://github.com/%s|%s|open-box-linux-x64.tar.gz\n' "${OPENBOX_REPO}" "${openbox_tag}" >> "${upstream_summary}"
+  fi
+fi
+
 chmod +x \
   "${custom_files}/etc/init.d/homepage-api" \
   "${custom_files}/etc/uci-defaults/90_luci-app-homepage-api" \

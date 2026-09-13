@@ -13,10 +13,23 @@ if [ -f "$distfeeds" ]; then
 		"$distfeeds"
 fi
 
-for service in tasks quickstart istore; do
+for service in tasks quickstart istore openbox-panel; do
 	[ -x "/etc/init.d/${service}" ] || continue
 	"/etc/init.d/${service}" enable >/dev/null 2>&1
 done
+
+sysconf='/etc/sysupgrade.conf'
+if [ -f "$sysconf" ]; then
+	for preserve_path in \
+		"/opt/open-box/data/" \
+		"/etc/init.d/openbox" \
+		"/etc/init.d/openbox-panel" \
+		"/usr/share/luci/menu.d/luci-app-openbox.json" \
+		"/usr/share/rpcd/acl.d/luci-app-openbox.json" \
+		"/www/luci-static/resources/view/openbox/"; do
+		grep -qxF "$preserve_path" "$sysconf" || echo "$preserve_path" >> "$sysconf"
+	done
+fi
 
 uci -q get openclash.config >/dev/null && {
 	uci -q set openclash.config.core_version='linux-amd64-v2'

@@ -14,6 +14,7 @@
 - PassWall LuCI 包默认用 ImmortalWrt SDK 从 `Openwrt-Passwall` 最新 feed 编译
 - iStore 商店和 quickstart 首页默认从 iStore apk 源安装
 - 自动嵌入 `fu5502/luci-app-homepage-api` 的 LuCI 文件
+- 自动集成最新 Open-Box（`liandu2024/Open-Box`）及其完整 LuCI 控制面板（端口 `2026`）
 - LuCI“状态 → 概览”内置自定义固件项目和 Releases 入口
 - 内置 Cloudflare 节点优选与提速插件（`服务 -> CF 节点优选` 与 `/root/cf_optimize` 测速脚本）
 - 修复 LuCI 状态概览中 CPU 使用率显示为 `?` 以及型号尾部出现 `undefined` 的问题
@@ -153,6 +154,15 @@ https://github.com/fu5502/luci-app-homepage-api
 - 核心脚本：`/root/cf_optimize/cf-autoupdate.sh`（执行测速、提取最优 IP、接管 Argo Tunnel 并刷新 DNS）
 - 测速工具与 IP 库：`/root/cf_optimize/CloudflareST`、`ip.txt`、`ipv6.txt`
 - 保留配置升级：`/root/cf_optimize/` 已加入 `/etc/sysupgrade.conf`，升级固件不会丢失本地测速数据与自定义参数。
+
+## Open-Box 集成与数据持久化
+
+固件在构建阶段自动拉取并嵌入 `liandu2024/Open-Box` 最新官方 Linux x64 发布包：
+
+- 部署路径：`/opt/open-box/`（内置 Node.js 运行时、sing-box 内核及管理面板）
+- 界面入口：`服务 -> Open-Box`，面板原生监听端口为 `2026`（如 `http://192.168.99.251:2026/`）
+- 开机自启：系统首次引导时通过 uci-defaults 自动将 `openbox-panel` 设为开机自启
+- 数据持久化防护：固件自动将核心配置与规则数据库目录 `/opt/open-box/data/` 以及服务脚本登记至 `/etc/sysupgrade.conf`，今后无论通过 LuCI 还是命令行执行保留配置刷机升级，均不会丢失任何已保存的节点、分流规则或 SQLite 数据库。
 
 ## 系统概览 CPU 使用率与型号修复
 
