@@ -1,0 +1,20 @@
+{
+    "luci-app-firmware-update": {
+        "description": "Grant access to firmware update RPC",
+        "read": {
+            "ubus": {
+                "luci": [
+                    "getFirmwareUpdateInfo",
+                    "getFirmwareUpdateLog"
+                ]
+            }
+        },
+        "write": {
+            "ubus": {
+                "luci": [
+                    "startFirmwareUpdate"
+                ]
+            }
+        }
+    }
+}

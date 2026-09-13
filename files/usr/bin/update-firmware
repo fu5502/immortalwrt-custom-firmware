@@ -1,0 +1,134 @@
+#!/bin/sh
+set -eu
+
+REPO="fu5502/immortalwrt-custom-firmware"
+API_URL="https://api.github.com/repos/${REPO}/releases/latest"
+LOCK_FILE="/tmp/firmware-update.lock"
+LOG_FILE="/tmp/firmware-update.log"
+WORK_DIR="/tmp/fw_update"
+VERSION_FILE="/etc/fu550-firmware-release"
+
+log() {
+    printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "${LOG_FILE}" 2>/dev/null || true
+    printf '==> %s\n' "$*"
+}
+
+die() {
+    printf '[%s] ERROR: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "${LOG_FILE}" 2>/dev/null || true
+    printf 'ERROR: %s\n' "$*" >&2
+    rm -f "${LOCK_FILE}"
+    exit 1
+}
+
+get_current_tag() {
+    if [ -f "${VERSION_FILE}" ]; then
+        cat "${VERSION_FILE}" | tr -d '\r\n'
+    else
+        . /etc/openwrt_release 2>/dev/null || true
+        echo "${DISTRIB_RELEASE:-25.12.2}-${DISTRIB_REVISION:-unknown}"
+    fi
+}
+
+check_release() {
+    local rel_json
+    rel_json="$(curl -fsSL --retry 3 "${API_URL}" || true)"
+    if [ -z "${rel_json}" ]; then
+        die "无法连接 GitHub API，请检查网络连接。"
+    fi
+
+    local current_tag
+    current_tag="$(get_current_tag)"
+
+    ucode -e '
+    import * as fs from "fs";
+    let data = json(fs.stdin.read("all"));
+    let tag = data.tag_name;
+    let assets = data.assets || [];
+    let img = filter(assets, a => match(a.name, /ext4-combined\.img\.gz$/))?.[0];
+    let sha = filter(assets, a => a.name == "SHA256SUMS.txt")?.[0];
+    let cur = ARGV[0];
+    let has_update = (tag != cur);
+
+    let result = {
+        current_tag: cur,
+        latest_tag: tag,
+        has_update: has_update,
+        published_at: data.published_at,
+        release_url: data.html_url,
+        asset_name: img?.name,
+        asset_url: img?.browser_download_url,
+        sha_url: sha?.browser_download_url
+    };
+    print(sprintf("%J\n", result));
+    ' "${current_tag}" <<EOF
+${rel_json}
+EOF
+}
+
+flash_firmware() {
+    if [ -f "${LOCK_FILE}" ]; then
+        local pid
+        pid="$(cat "${LOCK_FILE}" 2>/dev/null || true)"
+        if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+            die "固件升级任务已在运行中 (PID: ${pid})，请勿重复执行。"
+        fi
+    fi
+
+    echo "$$" > "${LOCK_FILE}"
+    : > "${LOG_FILE}"
+
+    log "开始检查最新固件..."
+    local check_json
+    check_json="$(check_release)"
+
+    local latest_tag asset_url sha_url asset_name
+    latest_tag="$(echo "${check_json}" | jsonfilter -e '@.latest_tag')"
+    asset_url="$(echo "${check_json}" | jsonfilter -e '@.asset_url')"
+    sha_url="$(echo "${check_json}" | jsonfilter -e '@.sha_url')"
+    asset_name="$(echo "${check_json}" | jsonfilter -e '@.asset_name')"
+
+    if [ -z "${asset_url}" ] || [ -z "${sha_url}" ]; then
+        die "未能从最新 Release 中解析到固件下载链接。"
+    fi
+
+    log "目标版本: ${latest_tag}"
+    log "正在清理下载目录..."
+    rm -rf "${WORK_DIR}"
+    mkdir -p "${WORK_DIR}"
+
+    log "正在下载固件镜像: ${asset_name}..."
+    curl -fL --retry 3 -o "${WORK_DIR}/${asset_name}" "${asset_url}"
+
+    log "正在下载校验文件: SHA256SUMS.txt..."
+    curl -fL --retry 3 -o "${WORK_DIR}/SHA256SUMS.txt" "${sha_url}"
+
+    log "正在校验 SHA256 完整性..."
+    (
+        cd "${WORK_DIR}"
+        sha256sum -c SHA256SUMS.txt --ignore-missing
+    ) || die "SHA256 校验失败，文件可能损坏！已中止刷机。"
+    log "SHA256 校验通过！"
+
+    log "正在执行 sysupgrade -T 兼容性仿真测试..."
+    sysupgrade -T "${WORK_DIR}/${asset_name}" || die "sysupgrade 兼容性测试失败！已中止刷机。"
+    log "兼容性测试通过！"
+
+    log "正在执行无损保留配置刷入 (sysupgrade -v)..."
+    log "系统即将写入磁盘并重启，升级过程约需 1~2 分钟，请耐心等待！"
+
+    rm -f "${LOCK_FILE}"
+    sysupgrade -v "${WORK_DIR}/${asset_name}"
+}
+
+case "${1:-check}" in
+    --check|check)
+        check_release
+        ;;
+    --flash|--run|flash|run)
+        flash_firmware
+        ;;
+    *)
+        echo "Usage: $0 [--check|--flash]"
+        exit 1
+        ;;
+esac

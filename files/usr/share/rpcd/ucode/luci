@@ -753,7 +753,51 @@ getCPUBench: {
 				return { onlineusers: error() };
 			}
 		}
-	}
-};
+	},
+
+		getFirmwareUpdateInfo: {
+			call: function() {
+				let fd = popen('/usr/bin/update-firmware --check 2>/dev/null');
+				if (fd) {
+					let out = fd.read('all');
+					fd.close();
+					try {
+						return { result: json(out) };
+					} catch (e) {
+						return { error: 'Failed to parse JSON: ' + out };
+					}
+				}
+				return { error: 'Failed to run update-firmware' };
+			}
+		},
+
+		startFirmwareUpdate: {
+			call: function() {
+				system('/usr/bin/update-firmware --flash >/tmp/firmware-update.log 2>&1 &');
+				return { result: 'started' };
+			}
+		},
+
+		getFirmwareUpdateLog: {
+			call: function() {
+				let log = readfile('/tmp/firmware-update.log') || '';
+				let status = 'idle';
+				if (access('/tmp/firmware-update.lock')) {
+					status = 'running';
+				} else if (log) {
+					if (match(log, /upgrade: Commencing upgrade/)) {
+						status = 'rebooting';
+					} else if (match(log, /ERROR:/)) {
+						status = 'failed';
+					} else if (match(log, /SHA256 校验通过/)) {
+						status = 'flashing';
+					} else {
+						status = 'done';
+					}
+				}
+				return { status: status, log: log };
+			}
+		}
+	};
 
 return { luci: methods };
