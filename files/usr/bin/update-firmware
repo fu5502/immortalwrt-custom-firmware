@@ -92,21 +92,29 @@ flash_firmware() {
     fi
 
     log "目标版本: ${latest_tag}"
-    log "正在清理下载目录..."
-    rm -rf "${WORK_DIR}"
     mkdir -p "${WORK_DIR}"
 
-    local mirror_prefix=""
-    if curl -fsSL -m 4 -sI "https://ghproxy.net/${sha_url}" >/dev/null 2>&1; then
-        mirror_prefix="https://ghproxy.net/"
-        log "已启用 GitHub 高速加速通道 (ghproxy.net)..."
+    local need_download=1
+    if [ -f "${WORK_DIR}/${asset_name}" ] && [ -f "${WORK_DIR}/SHA256SUMS.txt" ]; then
+        if ( cd "${WORK_DIR}" && grep "${asset_name}" SHA256SUMS.txt | sha256sum -c >/dev/null 2>&1 ); then
+            log "本地已存在校验一致的固件镜像，跳过重复下载！"
+            need_download=0
+        fi
     fi
 
-    log "正在下载固件镜像: ${asset_name}..."
-    curl -fL --retry 3 -o "${WORK_DIR}/${asset_name}" "${mirror_prefix}${asset_url}"
+    if [ "${need_download}" = "1" ]; then
+        local mirror_prefix=""
+        if curl -fsSL -m 4 -sI "https://ghproxy.net/${sha_url}" >/dev/null 2>&1; then
+            mirror_prefix="https://ghproxy.net/"
+            log "已启用 GitHub 高速加速通道 (ghproxy.net)..."
+        fi
 
-    log "正在下载校验文件: SHA256SUMS.txt..."
-    curl -fL --retry 3 -o "${WORK_DIR}/SHA256SUMS.txt" "${mirror_prefix}${sha_url}"
+        log "正在下载固件镜像: ${asset_name}..."
+        curl -fL --retry 3 -o "${WORK_DIR}/${asset_name}" "${mirror_prefix}${asset_url}"
+
+        log "正在下载校验文件: SHA256SUMS.txt..."
+        curl -fL --retry 3 -o "${WORK_DIR}/SHA256SUMS.txt" "${mirror_prefix}${sha_url}"
+    fi
 
     log "正在校验 SHA256 完整性..."
     (

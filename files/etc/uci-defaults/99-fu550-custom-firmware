@@ -22,6 +22,7 @@ sysconf='/etc/sysupgrade.conf'
 if [ -f "$sysconf" ]; then
 	for preserve_path in \
 		"/opt/open-box/data/" \
+		"/opt/open-box/etc/" \
 		"/etc/init.d/openbox" \
 		"/etc/init.d/openbox-panel" \
 		"/usr/share/luci/menu.d/luci-app-openbox.json" \
@@ -29,6 +30,14 @@ if [ -f "$sysconf" ]; then
 		"/www/luci-static/resources/view/openbox/"; do
 		grep -qxF "$preserve_path" "$sysconf" || echo "$preserve_path" >> "$sysconf"
 	done
+fi
+
+# If Open-Box database exists but config.json is missing, auto-compile config
+if [ -f /opt/open-box/data/openbox.sqlite ] && [ ! -f /opt/open-box/etc/config.json ]; then
+	OPENBOX_ROOT="/opt/open-box" \
+	ZASHBOARD_DB_PATH="/opt/open-box/data/openbox.sqlite" \
+	LD_LIBRARY_PATH="/opt/open-box/node/lib" \
+	/opt/open-box/node/bin/node /opt/open-box/panel/server/cli/deploy.mjs >/dev/null 2>&1 || true
 fi
 
 uci -q get openclash.config >/dev/null && {
