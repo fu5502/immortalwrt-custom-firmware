@@ -96,16 +96,22 @@ flash_firmware() {
     rm -rf "${WORK_DIR}"
     mkdir -p "${WORK_DIR}"
 
+    local mirror_prefix=""
+    if curl -fsSL -m 4 -sI "https://ghproxy.net/${sha_url}" >/dev/null 2>&1; then
+        mirror_prefix="https://ghproxy.net/"
+        log "已启用 GitHub 高速加速通道 (ghproxy.net)..."
+    fi
+
     log "正在下载固件镜像: ${asset_name}..."
-    curl -fL --retry 3 -o "${WORK_DIR}/${asset_name}" "${asset_url}"
+    curl -fL --retry 3 -o "${WORK_DIR}/${asset_name}" "${mirror_prefix}${asset_url}"
 
     log "正在下载校验文件: SHA256SUMS.txt..."
-    curl -fL --retry 3 -o "${WORK_DIR}/SHA256SUMS.txt" "${sha_url}"
+    curl -fL --retry 3 -o "${WORK_DIR}/SHA256SUMS.txt" "${mirror_prefix}${sha_url}"
 
     log "正在校验 SHA256 完整性..."
     (
         cd "${WORK_DIR}"
-        sha256sum -c SHA256SUMS.txt --ignore-missing
+        grep "${asset_name}" SHA256SUMS.txt | sha256sum -c
     ) || die "SHA256 校验失败，文件可能损坏！已中止刷机。"
     log "SHA256 校验通过！"
 
