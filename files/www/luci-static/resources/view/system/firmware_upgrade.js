@@ -177,7 +177,7 @@ return view.extend({
 			E('div', { 'class': 'cbi-map-descr' }, [
 				'从您的私有固件仓库（',
 				externalLink(projectUrl, 'fu5502/immortalwrt-custom-firmware'),
-				'）一键拉取最新 Release 镜像并执行无损保留配置刷入。固件已预装 Open-Box、OpenClash、PassWall，并预留 4096MB 根分区。'
+				'）一键拉取最新 Release 镜像并执行无损保留配置刷入。固件已预装 Open-Box、OpenClash、PassWall，并预留 2048MB 纯净根分区（无闲置分区）。'
 			]),
 			E('div', { 'class': 'cbi-section' }, [
 				E('table', { 'class': 'table' }, [
