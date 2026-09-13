@@ -341,6 +341,8 @@ verify_firmware_contents() {
     etc/init.d/istore
     etc/init.d/quickstart
     usr/bin/update-passwall
+    usr/bin/update-firmware
+    www/luci-static/resources/view/system/firmware_upgrade.js
     www/luci-static/resources/view/status/include/15_firmware_project.js
     usr/lib/lua/luci/controller/store.lua
     usr/lib/lua/luci/controller/quickstart.lua
@@ -553,9 +555,13 @@ chmod +x \
   "${custom_files}/etc/uci-defaults/90_luci-app-homepage-api" \
   "${custom_files}/usr/libexec/homepage-api/apply" \
   "${custom_files}/usr/bin/update-passwall" \
+  "${custom_files}/usr/bin/update-firmware" \
   "${custom_files}/etc/uci-defaults/99-fu550-custom-firmware" \
   "${custom_files}/root/cf_optimize/cf-autoupdate.sh" \
   "${custom_files}/root/cf_optimize/cfst_hosts.sh"
+
+short_sha="$(git -C "${workspace}" rev-parse --short=7 HEAD 2>/dev/null || echo "latest")"
+echo "immortalwrt-${RELEASE}-${target_dash}-rootfs-${ROOTFS_PARTSIZE}m-${short_sha}" > "${custom_files}/etc/fu550-firmware-release"
 
 packages="$(
   sed -e 's/#.*$//' -e '/^[[:space:]]*$/d' "${workspace}/config/packages.txt" |

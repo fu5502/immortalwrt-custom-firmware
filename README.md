@@ -15,6 +15,7 @@
 - iStore 商店和 quickstart 首页默认从 iStore apk 源安装
 - 自动嵌入 `fu5502/luci-app-homepage-api` 的 LuCI 文件
 - 自动集成最新 Open-Box（`liandu2024/Open-Box`）及其完整 LuCI 控制面板（端口 `2026`）
+- 支持 LuCI Web 界面与终端一键在线无损升级（自动检测 GitHub Release、校验哈希、保留配置刷入）
 - LuCI“状态 → 概览”内置自定义固件项目和 Releases 入口
 - 内置 Cloudflare 节点优选与提速插件（`服务 -> CF 节点优选` 与 `/root/cf_optimize` 测速脚本）
 - 修复 LuCI 状态概览中 CPU 使用率显示为 `?` 以及型号尾部出现 `undefined` 的问题
@@ -154,6 +155,29 @@ https://github.com/fu5502/luci-app-homepage-api
 - 核心脚本：`/root/cf_optimize/cf-autoupdate.sh`（执行测速、提取最优 IP、接管 Argo Tunnel 并刷新 DNS）
 - 测速工具与 IP 库：`/root/cf_optimize/CloudflareST`、`ip.txt`、`ipv6.txt`
 - 保留配置升级：`/root/cf_optimize/` 已加入 `/etc/sysupgrade.conf`，升级固件不会丢失本地测速数据与自定义参数。
+
+## 固件在线更新（LuCI Web 界面与终端一键升级）
+
+固件内置了与 GitHub Releases 联动的全自动无损在线更新机制：
+
+### 1. LuCI Web 界面（推荐）
+- 入口一：**“状态 → 概览 → 自定义固件与在线更新”**
+- 入口二：**“系统 → 固件在线更新”**
+- 功能：
+  - 点击 **【检查最新版本】**：系统自动调用后端 RPC 查询本仓库最新发布固件；
+  - 若有新版本：展示发布时间与镜像文件名，并显示高亮按钮 **【立即一键无损升级】**；
+  - 点击升级后弹出安全确认框，确认后在页面实时输出下载、SHA256 校验与刷盘进度；
+  - 刷写完毕后自动进入 60 秒重启倒计时并刷新页面，100% 保留所有网络与代理配置。
+
+### 2. TTYD / SSH 终端一键升级
+在终端直接运行：
+```sh
+# 检查最新版本（只查不刷）
+update-firmware --check
+
+# 执行一键下载、校验与无损保留配置刷机
+update-firmware --flash
+```
 
 ## Open-Box 集成与数据持久化
 

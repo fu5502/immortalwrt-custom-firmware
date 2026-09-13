@@ -1,0 +1,13 @@
+{
+	"admin/system/firmware_upgrade": {
+		"title": "固件在线更新",
+		"order": 95,
+		"action": {
+			"type": "view",
+			"path": "system/firmware_upgrade"
+		},
+		"depends": {
+			"acl": [ "luci-app-firmware-update" ]
+		}
+	}
+}
