@@ -7,7 +7,7 @@
 - 固件版本默认自动跟随 ImmortalWrt 最新稳定版
 - 目标平台固定为 `x86/64 generic`
 - 默认生成 PVE 最常用的 `ext4-combined.img.gz` 镜像
-- 根分区默认 `4096 MB`，避免每次升级后再手动扩容
+- 根分区默认 `2048 MB`（纯净引导 + 根分区，完美适配 4GB 虚拟磁盘，拒绝多余冗余分区）
 - 内置常用 LuCI 插件、代理组件、存储工具和维护工具
 - 上游插件默认每天刷新，OpenClash、PassWall 等可通过配置文件继续扩展
 - OpenClash 默认下载 `vernesong/OpenClash` 最新 Release 的 `.apk`
@@ -29,7 +29,7 @@
 
 ```text
 release=latest
-rootfs_partsize=4096
+rootfs_partsize=2048
 upstream_packages=1
 target=x86/64
 profile=generic
