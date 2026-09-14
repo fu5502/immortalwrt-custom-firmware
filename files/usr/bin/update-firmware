@@ -8,6 +8,8 @@ LOG_FILE="/tmp/firmware-update.log"
 WORK_DIR="/tmp/fw_update"
 VERSION_FILE="/etc/fu550-firmware-release"
 
+trap 'rm -f "${LOCK_FILE}" 2>/dev/null || true' EXIT INT TERM
+
 log() {
     printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "${LOG_FILE}" 2>/dev/null || true
     printf '==> %s\n' "$*"
@@ -103,17 +105,33 @@ flash_firmware() {
     fi
 
     if [ "${need_download}" = "1" ]; then
-        local mirror_prefix=""
-        if curl -fsSL -m 4 -sI "https://ghproxy.net/${sha_url}" >/dev/null 2>&1; then
-            mirror_prefix="https://ghproxy.net/"
-            log "已启用 GitHub 高速加速通道 (ghproxy.net)..."
-        fi
+        download_file() {
+            local out="$1"
+            local raw_url="$2"
+            local desc="$3"
+            local ok=0
 
-        log "正在下载固件镜像: ${asset_name}..."
-        curl -fL --retry 3 -o "${WORK_DIR}/${asset_name}" "${mirror_prefix}${asset_url}"
+            for prefix in "" "https://ghfast.top/" "https://ghproxy.net/"; do
+                local target="${prefix}${raw_url}"
+                if [ -z "${prefix}" ]; then
+                    log "正在下载${desc} (GitHub 原生通道)..."
+                else
+                    log "尝试镜像通道下载: ${prefix}..."
+                fi
+                if curl -fL --connect-timeout 10 --retry 1 -o "${out}" "${target}"; then
+                    ok=1
+                    break
+                else
+                    log "${desc}通过当前通道下载未成功，正在尝试备用通道..."
+                    rm -f "${out}"
+                fi
+            done
 
-        log "正在下载校验文件: SHA256SUMS.txt..."
-        curl -fL --retry 3 -o "${WORK_DIR}/SHA256SUMS.txt" "${mirror_prefix}${sha_url}"
+            [ "${ok}" -eq 1 ] || die "下载 ${desc} 失败，所有可用通道均未成功。"
+        }
+
+        download_file "${WORK_DIR}/${asset_name}" "${asset_url}" "固件镜像"
+        download_file "${WORK_DIR}/SHA256SUMS.txt" "${sha_url}" "SHA256校验文件"
     fi
 
     log "正在校验 SHA256 完整性..."
