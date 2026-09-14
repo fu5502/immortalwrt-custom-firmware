@@ -4,6 +4,7 @@
         "read": {
             "ubus": {
                 "luci": [
+                    "getFirmwareVersion",
                     "getFirmwareUpdateInfo",
                     "getFirmwareUpdateLog"
                 ]

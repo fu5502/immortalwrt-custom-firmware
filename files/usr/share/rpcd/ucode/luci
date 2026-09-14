@@ -755,6 +755,20 @@ getCPUBench: {
 		}
 	},
 
+		getFirmwareVersion: {
+			call: function() {
+				let rel = trim(readfile('/etc/fu550-firmware-release'));
+				if (!rel) {
+					let fd = popen('. /etc/openwrt_release 2>/dev/null && echo "$DISTRIB_DESCRIPTION"');
+					if (fd) {
+						rel = trim(fd.read('all'));
+						fd.close();
+					}
+				}
+				return { version: rel || 'ImmortalWrt' };
+			}
+		},
+
 		getFirmwareUpdateInfo: {
 			call: function() {
 				let fd = popen('/usr/bin/update-firmware --check 2>/dev/null');

@@ -5,6 +5,12 @@
 
 var projectUrl = 'https://github.com/fu5502/immortalwrt-custom-firmware';
 
+var callGetFirmwareVersion = rpc.declare({
+	object: 'luci',
+	method: 'getFirmwareVersion',
+	expect: { version: '' }
+});
+
 var callGetFirmwareUpdateInfo = rpc.declare({
 	object: 'luci',
 	method: 'getFirmwareUpdateInfo',
@@ -34,10 +40,17 @@ function externalLink(url, label) {
 return view.extend({
 	title: _('固件在线更新'),
 
-	render: function() {
+	load: function() {
+		return Promise.all([
+			L.resolveDefault(callGetFirmwareVersion(), { version: '-' })
+		]);
+	},
+
+	render: function(data) {
+		var initialVersion = data?.[0]?.version || '-';
 		var statusText = E('span', { 'class': 'badge' }, ['未检查']);
 		var actionContainer = E('div', { 'style': 'margin-top: 15px;' }, []);
-		var currentTagTd = E('td', { 'class': 'td left' }, ['-']);
+		var currentTagTd = E('td', { 'class': 'td left' }, [initialVersion]);
 		var latestTagTd = E('td', { 'class': 'td left' }, ['-']);
 		var publishDateTd = E('td', { 'class': 'td left' }, ['-']);
 		var assetNameTd = E('td', { 'class': 'td left' }, ['-']);
@@ -62,7 +75,7 @@ return view.extend({
 						return;
 					}
 
-					currentTagTd.textContent = res.current_tag || '-';
+					currentTagTd.textContent = res.current_tag || initialVersion;
 					latestTagTd.innerHTML = '';
 					latestTagTd.appendChild(externalLink(res.release_url, res.latest_tag));
 					publishDateTd.textContent = res.published_at ? res.published_at.replace('T', ' ').replace('Z', ' UTC') : '-';
