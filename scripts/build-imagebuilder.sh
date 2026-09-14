@@ -495,6 +495,7 @@ unset_config CONFIG_QCOW2_IMAGES
 unset_config CONFIG_VDI_IMAGES
 unset_config CONFIG_VMDK_IMAGES
 unset_config CONFIG_VHDX_IMAGES
+set_config CONFIG_TARGET_BOOTFS_PARTSIZE 128
 set_config CONFIG_TARGET_ROOTFS_PARTSIZE "${ROOTFS_PARTSIZE}"
 
 if [ -d "${workspace}/files" ]; then

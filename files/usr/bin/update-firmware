@@ -127,6 +127,11 @@ flash_firmware() {
     sysupgrade -T "${WORK_DIR}/${asset_name}" || die "sysupgrade 兼容性测试失败！已中止刷机。"
     log "兼容性测试通过！"
 
+    # 清理非必要的大体积历史备份文件，防止打包超出启动分区空间
+    rm -f /opt/open-box/data/*.bak* 2>/dev/null || true
+    rm -f /root/cf_optimize/*.tar.gz 2>/dev/null || true
+    rm -f /etc/openclash/core/meta-backup/* 2>/dev/null || true
+
     log "正在执行无损保留配置刷入 (sysupgrade -v)..."
     log "系统即将写入磁盘并重启，升级过程约需 1~2 分钟，请耐心等待！"
 
