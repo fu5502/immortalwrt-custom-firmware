@@ -19,17 +19,6 @@ luci-app-firewall
 luci-i18n-firewall-zh-cn
 luci-i18n-base-zh-cn
 
-# DDNS and dashboard helpers
-ddns-go
-ddns-scripts
-ddns-scripts-services
-luci-app-ddns
-luci-i18n-ddns-zh-cn
-luci-app-ddns-go
-luci-i18n-ddns-go-zh-cn
-luci-app-wol
-luci-i18n-wol-zh-cn
-
 # Proxy and network tools currently used on the router
 -dnsmasq
 dnsmasq-full
@@ -67,7 +56,6 @@ fdisk
 partx-utils
 resize2fs
 tune2fs
-etherwake
 ethtool
 lm-sensors
 ntfs3-mount

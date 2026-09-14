@@ -98,6 +98,10 @@ fi
 
 [ -d /root/cf_optimize ] && chmod +x /root/cf_optimize/*.sh 2>/dev/null
 
+for disabled_svc in mdadm smartd; do
+	[ -x "/etc/init.d/${disabled_svc}" ] && "/etc/init.d/${disabled_svc}" disable >/dev/null 2>&1 || true
+done
+
 rm -rf /tmp/luci-indexcache /tmp/luci-indexcache.* /tmp/luci-modulecache
 
 exit 0
