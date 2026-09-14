@@ -184,7 +184,7 @@ update-firmware --flash
 固件在构建阶段自动拉取并嵌入 `liandu2024/Open-Box` 最新官方 Linux x64 发布包：
 
 - 部署路径：`/opt/open-box/`（内置 Node.js 运行时、sing-box 内核及管理面板）
-- 界面入口：`服务 -> Open-Box`，面板原生监听端口为 `2026`（如 `http://192.168.99.251:2026/`）
+- 界面入口：`服务 -> Open-Box`，面板原生监听端口为 `2026`（如 `http://<旁路由IP>:2026/`）
 - 开机自启：系统首次引导时通过 uci-defaults 自动将 `openbox-panel` 设为开机自启
 - 数据持久化防护：固件自动将核心配置与规则数据库目录 `/opt/open-box/data/` 以及服务脚本登记至 `/etc/sysupgrade.conf`，今后无论通过 LuCI 还是命令行执行保留配置刷机升级，均不会丢失任何已保存的节点、分流规则或 SQLite 数据库。
 
