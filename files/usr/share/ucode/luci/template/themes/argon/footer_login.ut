@@ -22,7 +22,7 @@
 	<div>
 		<a class="luci-link" href="https://github.com/fu5502/immortalwrt-custom-firmware" target="_blank">Powered by fu5502/immortalwrt-custom-firmware ({{ version.distversion }})</a>
 		<a href="https://github.com/jerrykuku/luci-theme-argon" target="_blank">ArgonTheme v2.4.7</a>
-		<a class="luci-link" href="{{ version.disturl }}" target="_blank">{{ version.distname }} {{ version.distversion }}-{{ version.distrevision }}</a>
+		<a class="luci-link" href="https://github.com/fu5502/immortalwrt-custom-firmware/releases" target="_blank">{{ version.custom_release || (version.distname + ' ' + version.distversion + '-' + version.distrevision) }}</a>
 	</div>
 </footer>
 </div>

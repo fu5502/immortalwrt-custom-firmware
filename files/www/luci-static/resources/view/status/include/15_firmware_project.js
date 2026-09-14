@@ -5,6 +5,12 @@
 
 var projectUrl = 'https://github.com/fu5502/immortalwrt-custom-firmware';
 
+var callGetFirmwareVersion = rpc.declare({
+	object: 'luci',
+	method: 'getFirmwareVersion',
+	expect: { version: '' }
+});
+
 var callGetFirmwareUpdateInfo = rpc.declare({
 	object: 'luci',
 	method: 'getFirmwareUpdateInfo',
@@ -34,10 +40,17 @@ function externalLink(url, label) {
 return baseclass.extend({
 	title: '自定义固件与在线更新',
 
-	render: function() {
+	load: function() {
+		return Promise.all([
+			L.resolveDefault(callGetFirmwareVersion(), { version: '-' })
+		]);
+	},
+
+	render: function(data) {
+		var initialVersion = data?.[0]?.version || '-';
 		var statusText = E('span', { 'class': 'badge' }, ['未检查']);
 		var actionContainer = E('span', {}, []);
-		var currentTagTd = E('td', { 'class': 'td left' }, ['-']);
+		var currentTagTd = E('td', { 'class': 'td left' }, [initialVersion]);
 		var latestTagTd = E('td', { 'class': 'td left' }, ['-']);
 
 		var checkBtn = E('button', {
@@ -56,7 +69,7 @@ return baseclass.extend({
 						return;
 					}
 
-					currentTagTd.textContent = res.current_tag || '-';
+					currentTagTd.textContent = res.current_tag || initialVersion;
 					latestTagTd.innerHTML = '';
 					latestTagTd.appendChild(externalLink(res.release_url, res.latest_tag));
 
