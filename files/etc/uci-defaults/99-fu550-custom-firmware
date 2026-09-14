@@ -18,10 +18,36 @@ for service in tasks quickstart istore openbox openbox-panel; do
 	"/etc/init.d/${service}" enable >/dev/null 2>&1
 done
 
+# Ensure bypass router firewall defaults: allow forward, disable flow offload (protect TUN mode)
+uci -q get firewall.@defaults[0] >/dev/null && {
+	uci -q set firewall.@defaults[0].input='ACCEPT'
+	uci -q set firewall.@defaults[0].output='ACCEPT'
+	uci -q set firewall.@defaults[0].forward='ACCEPT'
+	uci -q set firewall.@defaults[0].flow_offloading='0'
+	uci -q set firewall.@defaults[0].flow_offloading_hw='0'
+	uci -q commit firewall
+}
+
 # Ensure LAN firewall zone has masquerade enabled (essential for bypass routing)
 uci -q get firewall.@zone[0] >/dev/null && {
 	uci -q set firewall.@zone[0].masq='1'
 	uci -q commit firewall
+}
+
+# Ensure DHCP and IPv6 RA are disabled on LAN to prevent hijacking & conflict with iKuai
+uci -q get dhcp.lan >/dev/null && {
+	uci -q set dhcp.lan.ignore='1'
+	uci -q set dhcp.lan.dhcpv4='disabled'
+	uci -q set dhcp.lan.ra='disabled'
+	uci -q set dhcp.lan.dhcpv6='disabled'
+	uci -q set dhcp.lan.ndp='disabled'
+	uci -q commit dhcp
+}
+
+# Internal DNS mapping for tg.zyweb.top
+grep -q "tg.zyweb.top" /etc/hosts 2>/dev/null || {
+	echo "192.168.99.251 tg.zyweb.top" >> /etc/hosts
+	echo "240e:36e:701:c8d1::62a tg.zyweb.top" >> /etc/hosts
 }
 
 sysconf='/etc/sysupgrade.conf'
