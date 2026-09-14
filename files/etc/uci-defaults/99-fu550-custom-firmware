@@ -68,6 +68,7 @@ if [ -f /etc/config/passwall_server ]; then
 				remarks = s.remarks or id,
 				type = type,
 				port = port,
+				accept_lan = s.accept_lan or "1",
 				log = s.log or "1"
 			}
 			if type == "Socks" then
