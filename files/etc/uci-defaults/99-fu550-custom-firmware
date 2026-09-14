@@ -13,10 +13,16 @@ if [ -f "$distfeeds" ]; then
 		"$distfeeds"
 fi
 
-for service in tasks quickstart istore openbox-panel; do
+for service in tasks quickstart istore openbox openbox-panel; do
 	[ -x "/etc/init.d/${service}" ] || continue
 	"/etc/init.d/${service}" enable >/dev/null 2>&1
 done
+
+# Ensure LAN firewall zone has masquerade enabled (essential for bypass routing)
+uci -q get firewall.@zone[0] >/dev/null && {
+	uci -q set firewall.@zone[0].masq='1'
+	uci -q commit firewall
+}
 
 sysconf='/etc/sysupgrade.conf'
 if [ -f "$sysconf" ]; then
