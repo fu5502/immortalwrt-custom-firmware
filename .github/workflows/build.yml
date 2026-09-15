@@ -19,6 +19,11 @@ on:
         description: Refresh upstream plugin packages from configured release assets and SDK feeds
         required: true
         default: "1"
+      force_build:
+        description: Force build even if no upstream changes detected
+        required: true
+        type: boolean
+        default: true
   push:
     branches:
       - main
@@ -33,7 +38,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check:
+    runs-on: ubuntu-24.04
+    outputs:
+      need_build: ${{ steps.check_step.outputs.need_build }}
+      build_reason: ${{ steps.check_step.outputs.build_reason }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check for upstream updates
+        id: check_step
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          FORCE_BUILD: ${{ github.event.inputs.force_build }}
+        run: bash scripts/check-upstream.sh
+
   build:
+    needs: check
+    if: needs.check.outputs.need_build == 'true'
     runs-on: ubuntu-24.04
     env:
       RELEASE: ${{ github.event.inputs.release || 'latest' }}
@@ -42,6 +66,7 @@ jobs:
       BUILD_UPSTREAM_PACKAGES: ${{ github.event.inputs.upstream_packages || '1' }}
       TARGET_PATH: x86/64
       PROFILE: generic
+      BUILD_REASON: ${{ needs.check.outputs.build_reason }}
 
     steps:
       - name: Checkout
@@ -63,7 +88,7 @@ jobs:
           short_sha="$(printf '%.7s' "$GITHUB_SHA")"
           resolved_release="${RESOLVED_RELEASE:-$RELEASE}"
           requested_release="${REQUESTED_RELEASE:-$RELEASE}"
-          tag_name="immortalwrt-${resolved_release}-x86-64-rootfs-${ROOTFS_PARTSIZE}m-${short_sha}"
+          tag_name="${FIRMWARE_RELEASE_TAG:-immortalwrt-${resolved_release}-x86-64-rootfs-${ROOTFS_PARTSIZE}m-${short_sha}}"
           release_name="ImmortalWrt ${resolved_release} x86/64 custom rootfs ${ROOTFS_PARTSIZE}M (${short_sha})"
 
           {
@@ -74,6 +99,8 @@ jobs:
           {
             echo "Custom ImmortalWrt firmware for fu5502."
             echo
+            echo "- Build reason: ${BUILD_REASON}"
+            echo "- Release Tag: ${tag_name}"
             echo "- Requested release: ${requested_release}"
             echo "- Resolved release: ${resolved_release}"
             echo "- Target: x86/64"

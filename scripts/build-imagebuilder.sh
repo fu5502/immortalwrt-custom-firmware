@@ -562,7 +562,28 @@ chmod +x \
   "${custom_files}/root/cf_optimize/cfst_hosts.sh"
 
 short_sha="$(git -C "${workspace}" rev-parse --short=7 HEAD 2>/dev/null || echo "latest")"
-echo "immortalwrt-${RELEASE}-${target_dash}-rootfs-${ROOTFS_PARTSIZE}m-${short_sha}" > "${custom_files}/etc/fu550-firmware-release"
+base_tag="immortalwrt-${RELEASE}-${target_dash}-rootfs-${ROOTFS_PARTSIZE}m-${short_sha}"
+
+if [ -n "${FIRMWARE_RELEASE_TAG:-}" ]; then
+  firmware_tag="${FIRMWARE_RELEASE_TAG}"
+else
+  repo="${GITHUB_REPOSITORY:-fu5502/immortalwrt-custom-firmware}"
+  if gh release view "${base_tag}" --repo "${repo}" >/dev/null 2>&1; then
+    build_date="$(date -u +'%Y%m%d')"
+    tag_candidate="${base_tag}.${build_date}"
+    if gh release view "${tag_candidate}" --repo "${repo}" >/dev/null 2>&1; then
+      tag_candidate="${tag_candidate}.${GITHUB_RUN_NUMBER:-1}"
+    fi
+    firmware_tag="${tag_candidate}"
+  else
+    firmware_tag="${base_tag}"
+  fi
+fi
+
+echo "${firmware_tag}" > "${custom_files}/etc/fu550-firmware-release"
+if [ -n "${GITHUB_ENV:-}" ]; then
+  echo "FIRMWARE_RELEASE_TAG=${firmware_tag}" >> "${GITHUB_ENV}"
+fi
 
 packages="$(
   sed -e 's/#.*$//' -e '/^[[:space:]]*$/d' "${workspace}/config/packages.txt" |
@@ -611,6 +632,25 @@ fi
 cp -v "${firmware_images[0]}" "${artifacts}/"
 cp -v "${upstream_summary}" "${artifacts}/UPSTREAM-PACKAGES.txt"
 cp -v "${firmware_contents_summary}" "${artifacts}/FIRMWARE-CONTENTS.txt"
+
+openbox_tag="$(grep '^release-tar|open-box|' "${upstream_summary}" 2>/dev/null | cut -d'|' -f4 || echo "")"
+openclash_tag="$(grep '^release-apk|openclash|' "${upstream_summary}" 2>/dev/null | cut -d'|' -f4 || echo "")"
+passwall_commit="$(grep '^sdk-feed|passwall|' "${upstream_summary}" 2>/dev/null | cut -d'|' -f5 || echo "")"
+
+cat > "${artifacts}/upstream-fingerprint.json" <<EOF
+{
+  "schema_version": "1",
+  "generated_at": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+  "firmware_tag": "${firmware_tag}",
+  "immortalwrt_release": "${RELEASE}",
+  "openbox_tag": "${openbox_tag}",
+  "openclash_tag": "${openclash_tag}",
+  "passwall_commit": "${passwall_commit}",
+  "homepage_api_commit": "${homepage_api_commit}",
+  "local_sha": "${GITHUB_SHA:-$(git -C "${workspace}" rev-parse HEAD 2>/dev/null || echo "unknown")}"
+}
+EOF
+
 (
   cd "${artifacts}"
   sha256sum * > SHA256SUMS.txt
