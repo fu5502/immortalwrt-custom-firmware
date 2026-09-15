@@ -150,6 +150,16 @@ flash_firmware() {
     rm -f /root/cf_optimize/*.tar.gz 2>/dev/null || true
     rm -f /etc/openclash/core/meta-backup/* 2>/dev/null || true
 
+    # 安全暂停向 SQLite 和日志高频写盘的服务，防止 tar 读取时因文件变动引发 "file changed as we read it"
+    log "正在暂停代理服务以安全封存配置数据库..."
+    /etc/init.d/openbox-panel stop 2>/dev/null || true
+    /etc/init.d/openbox stop 2>/dev/null || true
+    /etc/init.d/openclash stop 2>/dev/null || true
+    sync
+
+    # 若系统安装了 GNU tar，设置忽略文件变动警告，防止因微秒级日志写入导致 sysupgrade 中止
+    export TAR_OPTIONS="--warning=no-file-changed"
+
     log "正在执行无损保留配置刷入 (sysupgrade -v)..."
     log "系统即将写入磁盘并重启，升级过程约需 1~2 分钟，请耐心等待！"
 
