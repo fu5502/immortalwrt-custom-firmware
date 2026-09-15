@@ -42,12 +42,17 @@ return view.extend({
 
 	load: function() {
 		return Promise.all([
-			L.resolveDefault(callGetFirmwareVersion(), { version: '-' })
+			L.resolveDefault(callGetFirmwareVersion(), '-')
 		]);
 	},
 
 	render: function(data) {
-		var initialVersion = data?.[0]?.version || '-';
+		var rawVersion = data?.[0];
+		var initialVersion = (typeof(rawVersion) === 'string' && rawVersion.trim())
+			? rawVersion.trim()
+			: ((rawVersion && typeof(rawVersion) === 'object' && rawVersion.version)
+				? String(rawVersion.version).trim()
+				: '-');
 		var statusText = E('span', { 'class': 'badge' }, ['未检查']);
 		var actionContainer = E('div', { 'style': 'margin-top: 15px;' }, []);
 		var currentTagTd = E('td', { 'class': 'td left' }, [initialVersion]);
