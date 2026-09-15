@@ -1,5 +1,8 @@
 RAMFS_COPY_BIN='grub-bios-setup'
 
+# If GNU tar is used by sysupgrade, ignore "file changed as we read it" to prevent backup failure
+export TAR_OPTIONS="--warning=no-file-changed"
+
 platform_check_image() {
 	local diskdev partdev diff
 	[ "$#" -gt 1 ] && return 1
