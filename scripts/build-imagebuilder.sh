@@ -538,14 +538,18 @@ if [ -n "${openbox_release_json}" ]; then
           "${custom_files}/usr/share/luci/menu.d/luci-app-openbox.json"
     cp -f "${custom_files}/opt/open-box/openwrt/luci/root/usr/share/rpcd/acl.d/luci-app-openbox.json" \
           "${custom_files}/usr/share/rpcd/acl.d/luci-app-openbox.json"
-    cp -f "${custom_files}/opt/open-box/openwrt/luci/htdocs/luci-static/resources/view/openbox/status.js" \
-          "${custom_files}/www/luci-static/resources/view/openbox/status.js"
+    if [ -d "${custom_files}/opt/open-box/openwrt/luci/htdocs/luci-static/resources/view/openbox" ]; then
+      cp -rf "${custom_files}/opt/open-box/openwrt/luci/htdocs/luci-static/resources/view/openbox/." \
+            "${custom_files}/www/luci-static/resources/view/openbox/"
+    fi
 
-    chmod +x \
+    for script_file in \
       "${custom_files}/etc/init.d/openbox" \
       "${custom_files}/etc/init.d/openbox-panel" \
       "${custom_files}/opt/open-box/update.sh" \
-      "${custom_files}/opt/open-box/uninstall.sh"
+      "${custom_files}/opt/open-box/uninstall.sh"; do
+      [ -f "${script_file}" ] && chmod +x "${script_file}"
+    done
 
     printf 'release-tar|open-box|https://github.com/%s|%s|open-box-linux-x64.tar.gz\n' "${OPENBOX_REPO}" "${openbox_tag}" >> "${upstream_summary}"
   fi
