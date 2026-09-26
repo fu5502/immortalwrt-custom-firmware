@@ -3,7 +3,7 @@
 
 'use strict';
 
-import { stdin, access, dirname, basename, open, popen, glob, lsdir, readfile, readlink, realpath, error } from 'fs';
+import { stdin, access, dirname, basename, open, popen, glob, lsdir, readfile, readlink, realpath, error, stat } from 'fs';
 import { cursor } from 'uci';
 
 import { init_list, init_index, init_enabled, init_action, conntrack_list, process_list } from 'luci.sys';
@@ -796,20 +796,73 @@ getCPUBench: {
 			call: function() {
 				let log = readfile('/tmp/firmware-update.log') || '';
 				let status = 'idle';
+				let percent = 0;
+				let stage = 'idle';
+				let detail = '';
+
+				let prog_raw = readfile('/tmp/firmware-update.progress');
+				let prog = null;
+				if (prog_raw) {
+					try { prog = json(prog_raw); } catch (e) {}
+				}
+
+				let meta_raw = readfile('/tmp/firmware-update.meta');
+				let meta = null;
+				if (meta_raw) {
+					try { meta = json(meta_raw); } catch (e) {}
+				}
+
 				if (access('/tmp/firmware-update.lock')) {
 					status = 'running';
+					if (prog) {
+						stage = prog.stage || 'running';
+						percent = prog.percent || 10;
+						detail = prog.detail || '';
+					}
+
+					if (stage == 'downloading' && meta?.asset_name && meta?.asset_size > 0) {
+						let st = stat('/tmp/fw_update/' + meta.asset_name);
+						if (st && st.size > 0) {
+							let cur = st.size;
+							let total = meta.asset_size;
+							let dl_pct = int((cur * 100.0) / total);
+							if (dl_pct > 100) dl_pct = 100;
+							percent = 12 + int(dl_pct * 0.48);
+							detail = sprintf("正在下载固件镜像 (%.1f MB / %.1f MB, %d%%)...",
+								cur / 1048576.0, total / 1048576.0, dl_pct);
+						}
+					}
 				} else if (log) {
-					if (match(log, /upgrade: Commencing upgrade/)) {
+					if (match(log, /upgrade: Commencing upgrade/) || match(log, /sysupgrade -v/) || (prog?.stage == 'rebooting')) {
 						status = 'rebooting';
-					} else if (match(log, /ERROR:/)) {
+						stage = 'rebooting';
+						percent = 100;
+						detail = '固件已成功刷入磁盘！系统正在重新启动...';
+					} else if (match(log, /ERROR:/) || (prog?.stage == 'failed')) {
 						status = 'failed';
+						stage = 'failed';
+						percent = 100;
+						detail = prog?.detail || '固件升级失败，请查看日志详情。';
 					} else if (match(log, /SHA256 校验通过/)) {
 						status = 'flashing';
+						stage = 'flashing';
+						percent = 90;
+						detail = '正在刷入固件到磁盘...';
 					} else {
 						status = 'done';
+						stage = 'done';
+						percent = 100;
+						detail = '升级完成';
 					}
 				}
-				return { status: status, log: log };
+
+				return {
+					status: status,
+					percent: percent,
+					stage: stage,
+					detail: detail,
+					log: log
+				};
 			}
 		}
 	};
