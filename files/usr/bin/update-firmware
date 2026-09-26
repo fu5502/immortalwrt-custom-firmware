@@ -7,8 +7,18 @@ LOCK_FILE="/tmp/firmware-update.lock"
 LOG_FILE="/tmp/firmware-update.log"
 WORK_DIR="/tmp/fw_update"
 VERSION_FILE="/etc/fu550-firmware-release"
+PROGRESS_FILE="/tmp/firmware-update.progress"
+META_FILE="/tmp/firmware-update.meta"
 
 trap 'rm -f "${LOCK_FILE}" 2>/dev/null || true' EXIT INT TERM
+
+set_progress() {
+    local stage="$1"
+    local percent="$2"
+    local detail="$3"
+    printf '{"stage":"%s","percent":%d,"detail":"%s"}\n' "${stage}" "${percent}" "${detail}" > "${PROGRESS_FILE}.tmp" 2>/dev/null || true
+    mv -f "${PROGRESS_FILE}.tmp" "${PROGRESS_FILE}" 2>/dev/null || true
+}
 
 log() {
     printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "${LOG_FILE}" 2>/dev/null || true
@@ -16,6 +26,7 @@ log() {
 }
 
 die() {
+    set_progress "failed" 100 "$*"
     printf '[%s] ERROR: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "${LOG_FILE}" 2>/dev/null || true
     printf 'ERROR: %s\n' "$*" >&2
     rm -f "${LOCK_FILE}"
@@ -58,6 +69,7 @@ check_release() {
         published_at: data.published_at,
         release_url: data.html_url,
         asset_name: img?.name,
+        asset_size: img?.size,
         asset_url: img?.browser_download_url,
         sha_url: sha?.browser_download_url
     };
@@ -78,22 +90,29 @@ flash_firmware() {
 
     echo "$$" > "${LOCK_FILE}"
     : > "${LOG_FILE}"
+    rm -f "${PROGRESS_FILE}" "${META_FILE}" "${PROGRESS_FILE}.tmp" 2>/dev/null || true
+    set_progress "init" 5 "正在初始化升级任务并检查目标固件..."
 
     log "开始检查最新固件..."
     local check_json
     check_json="$(check_release)"
 
-    local latest_tag asset_url sha_url asset_name
+    local latest_tag asset_url sha_url asset_name asset_size
     latest_tag="$(echo "${check_json}" | jsonfilter -e '@.latest_tag')"
     asset_url="$(echo "${check_json}" | jsonfilter -e '@.asset_url')"
     sha_url="$(echo "${check_json}" | jsonfilter -e '@.sha_url')"
     asset_name="$(echo "${check_json}" | jsonfilter -e '@.asset_name')"
+    asset_size="$(echo "${check_json}" | jsonfilter -e '@.asset_size')"
 
     if [ -z "${asset_url}" ] || [ -z "${sha_url}" ]; then
         die "未能从最新 Release 中解析到固件下载链接。"
     fi
 
+    printf '{"asset_name":"%s","asset_size":%s,"latest_tag":"%s"}\n' \
+        "${asset_name}" "${asset_size:-0}" "${latest_tag}" > "${META_FILE}" 2>/dev/null || true
+
     log "目标版本: ${latest_tag}"
+    set_progress "init" 10 "已确认目标版本: ${latest_tag}"
     mkdir -p "${WORK_DIR}"
 
     local need_download=1
@@ -130,20 +149,29 @@ flash_firmware() {
             [ "${ok}" -eq 1 ] || die "下载 ${desc} 失败，所有可用通道均未成功。"
         }
 
+        set_progress "downloading" 12 "正在下载固件镜像..."
         download_file "${WORK_DIR}/${asset_name}" "${asset_url}" "固件镜像"
+        set_progress "downloading" 60 "正在下载 SHA256 校验文件..."
         download_file "${WORK_DIR}/SHA256SUMS.txt" "${sha_url}" "SHA256校验文件"
+        set_progress "downloaded" 62 "固件与校验文件下载完成"
+    else
+        set_progress "downloaded" 62 "本地已存在一致镜像，跳过下载"
     fi
 
+    set_progress "verifying" 65 "正在校验 SHA256 完整性..."
     log "正在校验 SHA256 完整性..."
     (
         cd "${WORK_DIR}"
         grep "${asset_name}" SHA256SUMS.txt | sha256sum -c
     ) || die "SHA256 校验失败，文件可能损坏！已中止刷机。"
     log "SHA256 校验通过！"
+    set_progress "verified" 70 "SHA256 完整性校验通过"
 
+    set_progress "testing" 75 "正在执行 sysupgrade -T 兼容性仿真测试..."
     log "正在执行 sysupgrade -T 兼容性仿真测试..."
     sysupgrade -T "${WORK_DIR}/${asset_name}" || die "sysupgrade 兼容性测试失败！已中止刷机。"
     log "兼容性测试通过！"
+    set_progress "tested" 80 "系统兼容性仿真测试通过"
 
     # 清理非必要的大体积历史备份文件，防止打包超出启动分区空间
     rm -f /opt/open-box/data/*.bak* 2>/dev/null || true
@@ -151,6 +179,7 @@ flash_firmware() {
     rm -f /etc/openclash/core/meta-backup/* 2>/dev/null || true
 
     # 安全暂停向 SQLite 和日志高频写盘的服务，防止 tar 读取时因文件变动引发 "file changed as we read it"
+    set_progress "backup" 85 "正在暂停代理服务以安全封存配置数据库..."
     log "正在暂停代理服务以安全封存配置数据库..."
     /etc/init.d/openbox-panel stop 2>/dev/null || true
     /etc/init.d/openbox stop 2>/dev/null || true
@@ -160,9 +189,11 @@ flash_firmware() {
     # 若系统安装了 GNU tar，设置忽略文件变动警告，防止因微秒级日志写入导致 sysupgrade 中止
     export TAR_OPTIONS="--warning=no-file-changed"
 
+    set_progress "flashing" 92 "正在执行无损保留配置刷入 (sysupgrade -v)..."
     log "正在执行无损保留配置刷入 (sysupgrade -v)..."
     log "系统即将写入磁盘并重启，升级过程约需 1~2 分钟，请耐心等待！"
 
+    set_progress "rebooting" 100 "固件已写入磁盘，系统正在重启..."
     rm -f "${LOCK_FILE}"
     sysupgrade -v "${WORK_DIR}/${asset_name}"
 }
