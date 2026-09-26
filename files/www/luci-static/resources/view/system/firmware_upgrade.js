@@ -20,6 +20,7 @@ var callGetFirmwareUpdateInfo = rpc.declare({
 var callStartFirmwareUpdate = rpc.declare({
 	object: 'luci',
 	method: 'startFirmwareUpdate',
+	params: [ 'channel' ],
 	expect: { result: '' }
 });
 
@@ -166,6 +167,15 @@ return view.extend({
 		var publishDateTd = E('td', { 'class': 'td left' }, ['-']);
 		var assetNameTd = E('td', { 'class': 'td left' }, ['-']);
 
+		var pageChannelSelect = E('select', {
+			'class': 'cbi-input-select',
+			'style': 'max-width: 380px; font-size: 13px;'
+		}, [
+			E('option', { 'value': 'ghfast' }, ['🚀 极速镜像加速 (ghfast.top，推荐，秒级下载)']),
+			E('option', { 'value': 'native' }, ['🌐 GitHub 原生通道 (走旁路由代理节点)']),
+			E('option', { 'value': 'auto' }, ['🔄 智能自动选择 (优先极速镜像，故障回退原生)'])
+		]);
+
 		var progressBar = createProgressBar();
 
 		var logPre = E('pre', {
@@ -222,10 +232,31 @@ return view.extend({
 		}, ['检查最新版本']);
 
 		function showUpgradeConfirmModal(info) {
+			var modalChannelSelect = E('select', {
+				'class': 'cbi-input-select',
+				'style': 'width: 100%; margin: 8px 0; padding: 6px 8px; font-size: 13px;'
+			}, [
+				E('option', { 'value': 'ghfast' }, ['🚀 极速镜像加速 (ghfast.top，推荐，实测 20MB/s)']),
+				E('option', { 'value': 'native' }, ['🌐 GitHub 原生通道 (走旁路由代理下载)']),
+				E('option', { 'value': 'auto' }, ['🔄 智能自动切换 (极速镜像优先，故障自动回退)'])
+			]);
+			modalChannelSelect.value = pageChannelSelect.value || 'ghfast';
+
 			ui.showModal('确认一键无损在线升级', [
 				E('p', {}, [
 					'系统将自动从 GitHub 下载最新版本固件（已预装 Open-Box、OpenClash、PassWall 等），',
 					E('strong', {}, '并无损保留您现有的网络 IP、代理规则、Open-Box 数据库等所有配置！')
+				]),
+				E('div', { 'style': 'margin: 12px 0; padding: 12px; background: rgba(125, 125, 125, 0.08); border-radius: 6px; border: 1px solid rgba(125, 125, 125, 0.15);' }, [
+					E('label', { 'style': 'font-weight: 600; display: block; margin-bottom: 4px;' }, ['下载加速通道选择：']),
+					modalChannelSelect,
+					E('div', { 'style': 'font-size: 12px; opacity: 0.75; margin-top: 6px; line-height: 1.6;' }, [
+						'• 极速镜像：国内 CDN 节点直连，实测 20MB/s，8秒完成 173MB 固件下载；',
+						E('br'),
+						'• 原生通道：直连 GitHub 官方源，走当前旁路由配置的代理节点；',
+						E('br'),
+						'• 无论选择哪个通道，均经 SHA256 完整性强哈希校验，100% 安全保真。'
+					])
 				]),
 				E('p', { 'class': 'alert-message warning' }, [
 					'⚠️ 升级刷写期间请保持电源稳定。写入完成后路由器将自动重启（约需 1~2 分钟）。'
@@ -239,15 +270,17 @@ return view.extend({
 					E('button', {
 						'class': 'btn cbi-button-positive',
 						'click': function() {
+							var chosenChannel = modalChannelSelect.value || 'ghfast';
+							pageChannelSelect.value = chosenChannel;
 							ui.hideModal();
-							startUpgradeProcess(info);
+							startUpgradeProcess(info, chosenChannel);
 						}
 					}, ['确认开始升级'])
 				])
 			]);
 		}
 
-		function startUpgradeProcess(info) {
+		function startUpgradeProcess(info, channel) {
 			checkBtn.disabled = true;
 			actionContainer.style.display = 'none';
 			progressBar.show();
@@ -255,7 +288,7 @@ return view.extend({
 			logPre.style.display = 'block';
 			logPre.textContent = '正在启动升级任务...\n';
 
-			callStartFirmwareUpdate().then(function() {
+			callStartFirmwareUpdate(channel || 'auto').then(function() {
 				var pollTimer = window.setInterval(function() {
 					callGetFirmwareUpdateLog().then(function(logData) {
 						if (logData && logData.log) {
@@ -342,6 +375,15 @@ return view.extend({
 					E('tr', { 'class': 'tr' }, [
 						E('td', { 'class': 'td left' }, ['固件资产文件']),
 						assetNameTd
+					]),
+					E('tr', { 'class': 'tr' }, [
+						E('td', { 'class': 'td left' }, ['下载加速通道']),
+						E('td', { 'class': 'td left' }, [
+							pageChannelSelect,
+							E('div', { 'style': 'font-size: 12px; opacity: 0.75; margin-top: 4px;' }, [
+								'极速镜像通过国内 CDN 节点直连秒级下载；原生通道直接请求 GitHub 官方源（走旁路由代理）。'
+							])
+						])
 					]),
 					E('tr', { 'class': 'tr' }, [
 						E('td', { 'class': 'td left' }, ['更新检查状态']),

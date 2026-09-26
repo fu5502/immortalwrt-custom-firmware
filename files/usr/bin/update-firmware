@@ -80,6 +80,7 @@ EOF
 }
 
 flash_firmware() {
+    local channel="${1:-auto}"
     if [ -f "${LOCK_FILE}" ]; then
         local pid
         pid="$(cat "${LOCK_FILE}" 2>/dev/null || true)"
@@ -92,6 +93,26 @@ flash_firmware() {
     : > "${LOG_FILE}"
     rm -f "${PROGRESS_FILE}" "${META_FILE}" "${PROGRESS_FILE}.tmp" 2>/dev/null || true
     set_progress "init" 5 "正在初始化升级任务并检查目标固件..."
+
+    local -a prefixes=()
+    case "${channel}" in
+        native)
+            prefixes=("" "https://ghfast.top/" "https://ghproxy.net/")
+            log "已选择 [GitHub 原生通道 (走代理)] 优先下载..."
+            ;;
+        ghfast|mirror)
+            prefixes=("https://ghfast.top/" "" "https://ghproxy.net/")
+            log "已选择 [极速镜像通道 (ghfast.top)] 优先下载..."
+            ;;
+        ghproxy)
+            prefixes=("https://ghproxy.net/" "https://ghfast.top/" "")
+            log "已选择 [备用镜像通道 (ghproxy.net)] 优先下载..."
+            ;;
+        *)
+            prefixes=("https://ghfast.top/" "" "https://ghproxy.net/")
+            log "已选择 [智能自动通道] (优先极速镜像，故障自动回退原生代理)..."
+            ;;
+    esac
 
     log "开始检查最新固件..."
     local check_json
@@ -130,12 +151,14 @@ flash_firmware() {
             local desc="$3"
             local ok=0
 
-            for prefix in "" "https://ghfast.top/" "https://ghproxy.net/"; do
+            for prefix in "${prefixes[@]}"; do
                 local target="${prefix}${raw_url}"
                 if [ -z "${prefix}" ]; then
-                    log "正在下载${desc} (GitHub 原生通道)..."
+                    log "正在下载${desc} (GitHub 原生通道 - 走旁路由代理)..."
+                elif [ "${prefix}" = "https://ghfast.top/" ]; then
+                    log "正在下载${desc} (极速镜像通道 - ghfast.top)..."
                 else
-                    log "尝试镜像通道下载: ${prefix}..."
+                    log "正在下载${desc} (备用镜像通道 - ${prefix})..."
                 fi
                 if curl -fL --connect-timeout 10 --retry 1 -o "${out}" "${target}"; then
                     ok=1
@@ -203,10 +226,11 @@ case "${1:-check}" in
         check_release
         ;;
     --flash|--run|flash|run)
-        flash_firmware
+        shift
+        flash_firmware "${1:-auto}"
         ;;
     *)
-        echo "Usage: $0 [--check|--flash]"
+        echo "Usage: $0 [--check|--flash [auto|native|ghfast|ghproxy]]"
         exit 1
         ;;
 esac
