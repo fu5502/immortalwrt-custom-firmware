@@ -786,8 +786,11 @@ getCPUBench: {
 		},
 
 		startFirmwareUpdate: {
-			call: function() {
-				system('/usr/bin/update-firmware --flash >/tmp/firmware-update.log 2>&1 &');
+			args: { channel: 'channel' },
+			call: function(request) {
+				let ch = request.args?.channel || 'auto';
+				ch = match(ch, /^[a-zA-Z0-9_-]+$/) ? ch : 'auto';
+				system(sprintf('/usr/bin/update-firmware --flash %s >/tmp/firmware-update.log 2>&1 &', ch));
 				return { result: 'started' };
 			}
 		},
