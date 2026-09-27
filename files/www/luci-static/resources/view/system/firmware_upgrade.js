@@ -248,15 +248,8 @@ return view.extend({
 					E('strong', {}, '并无损保留您现有的网络 IP、代理规则、Open-Box 数据库等所有配置！')
 				]),
 				E('div', { 'style': 'margin: 12px 0; padding: 12px; background: rgba(125, 125, 125, 0.08); border-radius: 6px; border: 1px solid rgba(125, 125, 125, 0.15);' }, [
-					E('label', { 'style': 'font-weight: 600; display: block; margin-bottom: 4px;' }, ['下载加速通道选择：']),
-					modalChannelSelect,
-					E('div', { 'style': 'font-size: 12px; opacity: 0.75; margin-top: 6px; line-height: 1.6;' }, [
-						'• 极速镜像：国内 CDN 节点直连，实测 20MB/s，8秒完成 173MB 固件下载；',
-						E('br'),
-						'• 原生通道：直连 GitHub 官方源，走当前旁路由配置的代理节点；',
-						E('br'),
-						'• 无论选择哪个通道，均经 SHA256 完整性强哈希校验，100% 安全保真。'
-					])
+					E('label', { 'style': 'font-weight: 600; display: block; margin-bottom: 6px;' }, ['下载加速通道选择：']),
+					modalChannelSelect
 				]),
 				E('p', { 'class': 'alert-message warning' }, [
 					'⚠️ 升级刷写期间请保持电源稳定。写入完成后路由器将自动重启（约需 1~2 分钟）。'
@@ -379,10 +372,7 @@ return view.extend({
 					E('tr', { 'class': 'tr' }, [
 						E('td', { 'class': 'td left' }, ['下载加速通道']),
 						E('td', { 'class': 'td left' }, [
-							pageChannelSelect,
-							E('div', { 'style': 'font-size: 12px; opacity: 0.75; margin-top: 4px;' }, [
-								'极速镜像通过国内 CDN 节点直连秒级下载；原生通道直接请求 GitHub 官方源（走旁路由代理）。'
-							])
+							pageChannelSelect
 						])
 					]),
 					E('tr', { 'class': 'tr' }, [

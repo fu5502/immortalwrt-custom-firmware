@@ -229,15 +229,8 @@ return baseclass.extend({
 					E('strong', {}, '并 100% 保留您当前的网络 IP、代理节点与所有配置数据')
 				]),
 				E('div', { 'style': 'margin: 12px 0; padding: 12px; background: rgba(125, 125, 125, 0.08); border-radius: 6px; border: 1px solid rgba(125, 125, 125, 0.15);' }, [
-					E('label', { 'style': 'font-weight: 600; display: block; margin-bottom: 4px;' }, ['下载加速通道选择：']),
-					modalChannelSelect,
-					E('div', { 'style': 'font-size: 12px; opacity: 0.75; margin-top: 6px; line-height: 1.6;' }, [
-						'• 极速镜像：国内 CDN 节点直连，实测 20MB/s，8秒完成 173MB 固件下载；',
-						E('br'),
-						'• 原生通道：直连 GitHub 官方源，走当前旁路由配置的代理节点；',
-						E('br'),
-						'• 无论选择哪个通道，均经 SHA256 完整性强哈希校验，100% 安全保真。'
-					])
+					E('label', { 'style': 'font-weight: 600; display: block; margin-bottom: 6px;' }, ['下载加速通道选择：']),
+					modalChannelSelect
 				]),
 				E('p', { 'class': 'alert-message warning' }, [
 					'⚠️ 升级过程中请勿断电或关机。刷写完成后路由器将自动重启（约需 1~2 分钟）。'
