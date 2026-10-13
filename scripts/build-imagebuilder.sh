@@ -568,22 +568,37 @@ chmod +x \
 short_sha="$(git -C "${workspace}" rev-parse --short=7 HEAD 2>/dev/null || echo "latest")"
 base_tag="immortalwrt-${RELEASE}-${target_dash}-rootfs-${ROOTFS_PARTSIZE}m-${short_sha}"
 
+release_tag_exists() {
+  local tag_to_check="$1"
+  local target_repo="$2"
+  if gh release view "${tag_to_check}" --repo "${target_repo}" >/dev/null 2>&1; then
+    return 0
+  fi
+  if curl -fsSL --retry 2 "https://api.github.com/repos/${target_repo}/releases/tags/${tag_to_check}" >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
+}
+
 if [ -n "${FIRMWARE_RELEASE_TAG:-}" ]; then
   firmware_tag="${FIRMWARE_RELEASE_TAG}"
 else
   repo="${GITHUB_REPOSITORY:-fu5502/immortalwrt-custom-firmware}"
-  if gh release view "${base_tag}" --repo "${repo}" >/dev/null 2>&1; then
+  if release_tag_exists "${base_tag}" "${repo}"; then
     build_date="$(date -u +'%Y%m%d')"
     tag_candidate="${base_tag}.${build_date}"
-    if gh release view "${tag_candidate}" --repo "${repo}" >/dev/null 2>&1; then
-      tag_candidate="${tag_candidate}.${GITHUB_RUN_NUMBER:-1}"
-    fi
+    seq=2
+    while release_tag_exists "${tag_candidate}" "${repo}"; do
+      tag_candidate="${base_tag}.${build_date}.${seq}"
+      seq=$((seq + 1))
+    done
     firmware_tag="${tag_candidate}"
   else
     firmware_tag="${base_tag}"
   fi
 fi
 
+echo "Resolved Firmware Release Tag: ${firmware_tag}"
 echo "${firmware_tag}" > "${custom_files}/etc/fu550-firmware-release"
 if [ -n "${GITHUB_ENV:-}" ]; then
   echo "FIRMWARE_RELEASE_TAG=${firmware_tag}" >> "${GITHUB_ENV}"
