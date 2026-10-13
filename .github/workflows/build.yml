@@ -60,6 +60,7 @@ jobs:
     if: needs.check.outputs.need_build == 'true'
     runs-on: ubuntu-24.04
     env:
+      GH_TOKEN: ${{ github.token }}
       RELEASE: ${{ github.event.inputs.release || 'latest' }}
       ROOTFS_PARTSIZE: ${{ github.event.inputs.rootfs_partsize || '2048' }}
       IMAGEBUILDER_URL: ${{ github.event.inputs.imagebuilder_url || '' }}
@@ -88,8 +89,10 @@ jobs:
           short_sha="$(printf '%.7s' "$GITHUB_SHA")"
           resolved_release="${RESOLVED_RELEASE:-$RELEASE}"
           requested_release="${REQUESTED_RELEASE:-$RELEASE}"
-          tag_name="${FIRMWARE_RELEASE_TAG:-immortalwrt-${resolved_release}-x86-64-rootfs-${ROOTFS_PARTSIZE}m-${short_sha}}"
-          release_name="ImmortalWrt ${resolved_release} x86/64 custom rootfs ${ROOTFS_PARTSIZE}M (${short_sha})"
+          base_tag="immortalwrt-${resolved_release}-x86-64-rootfs-${ROOTFS_PARTSIZE}m-${short_sha}"
+          tag_name="${FIRMWARE_RELEASE_TAG:-${base_tag}}"
+          tag_suffix="${tag_name#immortalwrt-${resolved_release}-x86-64-rootfs-${ROOTFS_PARTSIZE}m-}"
+          release_name="ImmortalWrt ${resolved_release} x86/64 custom rootfs ${ROOTFS_PARTSIZE}M (${tag_suffix})"
 
           {
             echo "RELEASE_TAG=${tag_name}"
