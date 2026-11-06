@@ -2,8 +2,12 @@
 #
 # Format:
 # name|github_repo|asset_name_regex
+# Or for direct URLs:
+# name|direct_download_url|-
 #
 # The downloaded apk is copied into ImageBuilder's local packages directory, so
 # it wins over the same package name from the ImmortalWrt release feed.
 
 openclash|vernesong/OpenClash|^luci-app-openclash-.*\.apk$
+shadowsocks-rust-sslocal|https://downloads.immortalwrt.org/snapshots/packages/x86_64/packages/shadowsocks-rust-sslocal-1.24.0-r1.apk|-
+shadowsocks-rust-ssserver|https://downloads.immortalwrt.org/snapshots/packages/x86_64/packages/shadowsocks-rust-ssserver-1.24.0-r1.apk|-

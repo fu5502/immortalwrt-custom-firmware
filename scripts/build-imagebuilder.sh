@@ -216,6 +216,17 @@ download_upstream_release_apks() {
       exit 1
     fi
 
+    case "${repo}" in
+      http://*|https://*)
+        asset_url="${repo}"
+        asset_name="$(basename "${asset_url}")"
+        echo "Downloading direct upstream package ${name}: ${asset_name}"
+        curl -fL --retry 3 -o "${upstream_package_dir}/${asset_name}" "${asset_url}"
+        printf 'direct-apk|%s|%s|latest|%s\n' "${name}" "${asset_url}" "${asset_name}" >> "${upstream_summary}"
+        continue
+        ;;
+    esac
+
     api_url="https://api.github.com/repos/${repo}/releases/latest"
     release_json="$(curl -fsSL --retry 3 "${api_url}")"
     tag="$(
@@ -277,7 +288,8 @@ build_upstream_sdk_packages() {
       exit 1
     fi
 
-    echo "src-git ${feed} ${repo};${branch}" >> "${sdkdir}/feeds.conf.default"
+    # Prepend custom feed to feeds.conf.default to give it highest priority over default feeds
+    sed -i "1i src-git ${feed} ${repo};${branch}" "${sdkdir}/feeds.conf.default"
     feed_names="$(add_unique_word "${feed}" "${feed_names}")"
     sdk_entries+=("${name}|${feed}|${repo}|${branch}|${make_target}|${artifact_globs}|${kconfig_snippet:-}")
   done < "${config_file}"
@@ -286,7 +298,13 @@ build_upstream_sdk_packages() {
   "${sdkdir}/scripts/feeds" update ${feed_names}
 
   for feed in ${feed_names}; do
-    "${sdkdir}/scripts/feeds" install -p "${feed}" -a
+    "${sdkdir}/scripts/feeds" install -f -p "${feed}" -a
+  done
+
+  # Explicitly reinstall configured packages from their designated feeds to guarantee override
+  for line in "${sdk_entries[@]}"; do
+    IFS='|' read -r name feed repo branch make_target artifact_globs kconfig_snippet <<< "${line}"
+    "${sdkdir}/scripts/feeds" install -f -p "${feed}" "${name}" 2>/dev/null || true
   done
 
   for line in "${sdk_entries[@]}"; do
