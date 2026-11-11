@@ -642,6 +642,7 @@ echo "Packages: ${packages}"
 
 make -C "${workdir}" image \
   PROFILE="${PROFILE}" \
+  BOOTFS_PARTSIZE=128 \
   ROOTFS_PARTSIZE="${ROOTFS_PARTSIZE}" \
   PACKAGES="${packages}" \
   FILES="${custom_files}" \
