@@ -41,17 +41,22 @@ platform_check_image() {
 
 platform_copy_config() {
 	local partdev
+	local target_dir="/tmp/cfg_restore_mount"
+	mkdir -p "$target_dir"
+
+	export_bootdevice
 
 	# 1. Try copying to partition 2 (ext4 rootfs) first: has ~1.4GB space, completely prevents truncation!
 	if export_partdevice partdev 2; then
-		if mount -t ext4 -o rw,noatime "/dev/$partdev" /mnt 2>/dev/null; then
+		if mount -t ext4 -o rw,noatime "/dev/$partdev" "$target_dir" 2>/dev/null; then
 			v "Saving backup archive to root filesystem partition 2 (/dev/$partdev)..."
-			if cp -af "$UPGRADE_BACKUP" "/mnt/$BACKUP_FILE"; then
+			if cp -af "$UPGRADE_BACKUP" "$target_dir/$BACKUP_FILE"; then
 				sync
-				umount /mnt
+				umount "$target_dir"
+				rmdir "$target_dir" 2>/dev/null || true
 				return 0
 			fi
-			umount /mnt
+			umount "$target_dir"
 		fi
 	fi
 
@@ -60,10 +65,12 @@ platform_copy_config() {
 		local parttype=ext4
 		part_magic_fat "/dev/$partdev" && parttype=vfat
 		v "Saving backup archive to boot partition 1 (/dev/$partdev)..."
-		mount -t $parttype -o rw,noatime "/dev/$partdev" /mnt
-		cp -af "$UPGRADE_BACKUP" "/mnt/$BACKUP_FILE"
-		sync
-		umount /mnt
+		if mount -t $parttype -o rw,noatime "/dev/$partdev" "$target_dir" 2>/dev/null; then
+			cp -af "$UPGRADE_BACKUP" "$target_dir/$BACKUP_FILE"
+			sync
+			umount "$target_dir"
+			rmdir "$target_dir" 2>/dev/null || true
+		fi
 	fi
 }
 

@@ -18,6 +18,20 @@ for service in tasks quickstart istore openbox openbox-panel; do
 	"/etc/init.d/${service}" enable >/dev/null 2>&1
 done
 
+# Ensure bypass router LAN IP defaults to 192.168.99.251 if unconfigured or reset to 192.168.1.1
+lan_ip="$(uci -q get network.lan.ipaddr)"
+case "$lan_ip" in
+	""|"192.168.1.1"|"192.168.1.1/24")
+		uci -q set network.lan.ipaddr='192.168.99.251'
+		uci -q set network.lan.netmask='255.255.255.0'
+		uci -q set network.lan.gateway='192.168.99.1'
+		uci -q set network.lan.peerdns='0'
+		uci -q del network.lan.dns 2>/dev/null || true
+		uci -q add_list network.lan.dns='223.5.5.5'
+		uci -q commit network
+	;;
+esac
+
 # Ensure bypass router firewall defaults: allow forward, disable flow offload (protect TUN mode)
 uci -q get firewall.@defaults[0] >/dev/null && {
 	uci -q set firewall.@defaults[0].input='ACCEPT'
