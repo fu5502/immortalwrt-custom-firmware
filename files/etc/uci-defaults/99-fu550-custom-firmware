@@ -58,7 +58,11 @@ uci -q get dhcp.lan >/dev/null && {
 	uci -q commit dhcp
 }
 
-# Internal DNS mapping for tg.zyweb.top
+# Internal DNS mapping for tg.cnidm.eu.org & tg.zyweb.top
+grep -q "tg.cnidm.eu.org" /etc/hosts 2>/dev/null || {
+	echo "192.168.99.251 tg.cnidm.eu.org" >> /etc/hosts
+	echo "2408:824e:1301:c911::62a tg.cnidm.eu.org" >> /etc/hosts
+}
 grep -q "tg.zyweb.top" /etc/hosts 2>/dev/null || {
 	echo "192.168.99.251 tg.zyweb.top" >> /etc/hosts
 	echo "240e:36e:701:c8d1::62a tg.zyweb.top" >> /etc/hosts
