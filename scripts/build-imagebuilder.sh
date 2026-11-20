@@ -176,7 +176,13 @@ configure_upstream_apk_repositories() {
 
     echo "Adding upstream apk repository group: ${name}"
     key_path="${workdir}/keys/${name}.pem"
-    curl -fL --retry 3 -o "${key_path}" "${key_url}"
+    local_key="${workspace}/config/keys/${name}.pem"
+    if [ -f "${local_key}" ]; then
+      echo "Using bundled signing key for ${name}: config/keys/${name}.pem"
+      cp "${local_key}" "${key_path}"
+    else
+      curl -fL --retry 3 -o "${key_path}" "${key_url}"
+    fi
 
     for repository_url in ${repository_urls}; do
       if ! grep -qxF "${repository_url}" "${repositories_file}"; then
