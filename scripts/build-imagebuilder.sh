@@ -50,6 +50,17 @@ resolve_python() {
 
 PYTHON_BIN="$(resolve_python)"
 
+github_api_curl() {
+  # Authenticate GitHub API calls with the workflow token when available;
+  # anonymous calls share a 60/hour per-IP rate limit across runners and
+  # intermittently fail with 403 (build #186).
+  if [ -n "${GH_TOKEN:-}" ]; then
+    curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "$@"
+  else
+    curl -fsSL "$@"
+  fi
+}
+
 resolve_latest_release() {
   local release_index latest_release
 
@@ -234,7 +245,7 @@ download_upstream_release_apks() {
     esac
 
     api_url="https://api.github.com/repos/${repo}/releases/latest"
-    release_json="$(curl -fsSL --retry 3 "${api_url}")"
+    release_json="$(github_api_curl --retry 3 "${api_url}")"
     tag="$(
       printf '%s\n' "${release_json}" |
         "${PYTHON_BIN}" -c 'import json,sys; print(json.load(sys.stdin).get("tag_name", "unknown"))'
@@ -534,7 +545,7 @@ mkdir -p "${custom_files}/www"
 rsync -a "${workdir}/homepage-api/htdocs/" "${custom_files}/www/"
 
 echo "Embedding Open-Box from ${OPENBOX_REPO}"
-openbox_release_json="$(curl -fsSL --retry 3 "https://api.github.com/repos/${OPENBOX_REPO}/releases/latest" || true)"
+openbox_release_json="$(github_api_curl --retry 3 "https://api.github.com/repos/${OPENBOX_REPO}/releases/latest" || true)"
 if [ -n "${openbox_release_json}" ]; then
   openbox_tag="$(
     printf '%s\n' "${openbox_release_json}" |
@@ -598,7 +609,7 @@ release_tag_exists() {
   if gh release view "${tag_to_check}" --repo "${target_repo}" >/dev/null 2>&1; then
     return 0
   fi
-  if curl -fsSL --retry 2 "https://api.github.com/repos/${target_repo}/releases/tags/${tag_to_check}" >/dev/null 2>&1; then
+  if github_api_curl --retry 2 "https://api.github.com/repos/${target_repo}/releases/tags/${tag_to_check}" >/dev/null 2>&1; then
     return 0
   fi
   return 1
